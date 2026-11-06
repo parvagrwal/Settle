@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: 256 combination cases: every mask 0..255, expected from predicates
+ok 1 - 256 combination cases: every mask 0..255, expected from predicates
+  ---
+  duration_ms: 1.182001
+  type: 'test'
+  ...
+# Subtest: boundary: $200.00 accepts, $200.01 is PerRequestCapExceeded
+ok 2 - boundary: $200.00 accepts, $200.01 is PerRequestCapExceeded
+  ---
+  duration_ms: 0.122433
+  type: 'test'
+  ...
+# Subtest: boundary: exact $1,500 weekly fill accepts, one cent over is WindowCapExceeded
+ok 3 - boundary: exact $1,500 weekly fill accepts, one cent over is WindowCapExceeded
+  ---
+  duration_ms: 0.149854
+  type: 'test'
+  ...
+# Subtest: boundary: window cap outranks per-request cap
+ok 4 - boundary: window cap outranks per-request cap
+  ---
+  duration_ms: 0.124221
+  type: 'test'
+  ...
+# Subtest: boundary: now exactly at expiry is not approved; 1s before is
+ok 5 - boundary: now exactly at expiry is not approved; 1s before is
+  ---
+  duration_ms: 0.095494
+  type: 'test'
+  ...
+# Subtest: boundary: new window with spent reset to 0 accepts a previously impossible spend
+ok 6 - boundary: new window with spent reset to 0 accepts a previously impossible spend
+  ---
+  duration_ms: 1.256533
+  type: 'test'
+  ...
+# Subtest: boundary: maximum representable amount is WindowCapExceeded, never a panic
+ok 7 - boundary: maximum representable amount is WindowCapExceeded, never a panic
+  ---
+  duration_ms: 0.152195
+  type: 'test'
+  ...
+# Subtest: boundary: zero and negative amounts are ZeroAmount
+ok 8 - boundary: zero and negative amounts are ZeroAmount
+  ---
+  duration_ms: 0.112035
+  type: 'test'
+  ...
+# Subtest: precedence pairs: every co-occurring pair returns the higher label
+ok 9 - precedence pairs: every co-occurring pair returns the higher label
+  ---
+  duration_ms: 0.401826
+  type: 'test'
+  ...
+# Subtest: decide is pure: same inputs give the same decision, inputs unchanged
+ok 10 - decide is pure: same inputs give the same decision, inputs unchanged
+  ---
+  duration_ms: 0.766354
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 124.0312
