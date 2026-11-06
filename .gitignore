@@ -1,0 +1,7 @@
+.env
+node_modules/
+dist/
+build/
+*.log
+evidence/gate1-payouts/token-response.json
+.DS_Store

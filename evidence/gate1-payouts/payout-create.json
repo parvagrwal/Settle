@@ -1,0 +1,1 @@
+{"batch_header":{"payout_batch_id":"YFBPVYJBHM9GU","batch_status":"PENDING","sender_batch_header":{"sender_batch_id":"settle-test-1793967237","email_subject":"Settle test payout"}},"links":[{"href":"https://api.sandbox.paypal.com/v1/payments/payouts/YFBPVYJBHM9GU","rel":"self","method":"GET","encType":"application/json"}]}
