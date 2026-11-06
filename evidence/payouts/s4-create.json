@@ -1,0 +1,33 @@
+{
+  "payout_batch_id": "4P79GAKFE3XA4",
+  "batch_status": "SUCCESS",
+  "sender_batch_id": "settle-1793969002435",
+  "jobs": [
+    {
+      "job_id": "settle-s4-1",
+      "freelancer_id": "freelancer-1",
+      "paypal_email": "sb-nxn4n45090184@personal.example.com",
+      "amount_cents": 100,
+      "currency": "USD",
+      "approval_state": "approved",
+      "approved_at": 1793969002434,
+      "status": "paid",
+      "payout_batch_id": "4P79GAKFE3XA4",
+      "payout_item_id": null,
+      "decision_reason": null
+    },
+    {
+      "job_id": "settle-s4-2",
+      "freelancer_id": "freelancer-2",
+      "paypal_email": "sb-nxn4n45090184@personal.example.com",
+      "amount_cents": 100,
+      "currency": "USD",
+      "approval_state": "approved",
+      "approved_at": 1793969002434,
+      "status": "paid",
+      "payout_batch_id": "4P79GAKFE3XA4",
+      "payout_item_id": null,
+      "decision_reason": null
+    }
+  ]
+}
