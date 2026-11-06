@@ -1,4 +1,4 @@
-// S4 auth — PayPal OAuth2 client credentials, sandbox only.
+// Payouts auth — PayPal OAuth2 client credentials, sandbox only.
 // POST /v1/oauth2/token, Basic Auth, grant_type=client_credentials.
 // Token is cached until expires_in, refreshed proactively.
 // Never log the token, the Client Secret, or the full Authorization header.
@@ -54,7 +54,7 @@ export class PayPalAuthError extends Error {
 // Small cache for the live script. Refresh when less than 60 seconds remain.
 // Note: no TypeScript parameter properties here. Node strip-only mode does
 // not support `private` in a constructor parameter list, so fields are
-// declared and assigned explicitly, like the rest of the S2 code.
+// declared and assigned explicitly, like the rest of the decision-rules code.
 export class PayPalAuth {
   private cached: TokenResult | null = null;
   private baseUrl: string;

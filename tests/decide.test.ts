@@ -1,4 +1,4 @@
-// S2 tests: 256 combination cases + boundary tests + precedence pairs.
+// Decision-rules tests: 256 combination cases + boundary tests + precedence pairs.
 // Run: node --test tests/decide.test.ts   (Node >= 22, type stripping on)
 // Evidence: save the run output to evidence/decide/test-output.txt
 import test from "node:test";
@@ -28,7 +28,7 @@ function baseRequest(): PaymentRequest {
 }
 
 // Independent expected-label computation: re-evaluates each rule's
-// predicate on the constructed input, in PRD §7 precedence order.
+// predicate on the constructed input, in the decision-rules precedence order.
 // It does NOT call decide()'s internals, so a shared bug would need to
 // appear in both places to pass silently.
 function expectedLabel(policy: Policy, state: State, req: PaymentRequest, now: number): RejectLabel | "accept" {
@@ -99,7 +99,7 @@ test("boundary: exact $1,500 weekly fill accepts, one cent over is WindowCapExce
 });
 
 test("boundary: window cap outranks per-request cap", () => {
-  // $200.01 AND breaks the week: the week label must win (PRD §7).
+  // $200.01 AND breaks the week: the week label must win.
   const state = { ...baseState(), spentInWindowCents: 140000 };
   const got = decide(DEFAULT_POLICY, state, { ...baseRequest(), amountCents: 20001 }, NOW);
   assert.equal((got as { label: string }).label, "WindowCapExceeded");

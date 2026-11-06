@@ -1,4 +1,4 @@
-// S4 jobs — the wiring between decide() and Payouts.
+// Payouts jobs — the wiring between decide() and Payouts.
 // This is the enforcement point. Every job goes through decide() first.
 // If decide() rejects, no PayPal call is made for that job, and the job
 // is marked blocked or waiting_for_meera, with the exact label as its reason.

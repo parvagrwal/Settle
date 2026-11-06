@@ -3,5 +3,5 @@ node_modules/
 dist/
 build/
 *.log
-evidence/gate1-payouts/token-response.json
+evidence/payouts-first-test/token-response.json
 .DS_Store

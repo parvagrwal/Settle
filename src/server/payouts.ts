@@ -1,4 +1,4 @@
-// S4 payouts — Payouts REST, v1, REST only, NOT in the Agent Toolkit.
+// Payouts — Payouts REST, v1, REST only, NOT in the Agent Toolkit.
 // POST /v1/payments/payouts, GET /v1/payments/payouts/{payout_batch_id},
 // GET /v1/payments/payouts-item/{payout_item_id},
 // POST /v1/payments/payouts-item/{payout_item_id}/cancel.

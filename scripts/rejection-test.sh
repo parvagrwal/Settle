@@ -1,12 +1,12 @@
 #!/bin/bash
-# S3 rejection test — docs/ARCHITECTURE.md Section 7.
+# Rejection test — docs/ARCHITECTURE.md Section 7.
 # Run with all application processes stopped. No server, no PayPal call,
 # no money moved. It runs tests/rejection.test.ts against decide() only.
 # Usage: bash scripts/rejection-test.sh
 # Output saved to evidence/threat-model/rejection-test-output.txt
 set -euo pipefail
 cd "$(dirname "$0")/.."
-echo "S3 rejection test — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "Rejection test — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "No server should be running. Checking PORT 3000..."
 if command -v ss >/dev/null 2>&1; then ss -ltn 2>/dev/null | grep -q ":3000" && echo "WARNING: something is listening on 3000" || echo "OK: nothing listening on 3000 (ss)"
 elif command -v lsof >/dev/null 2>&1; then lsof -i :3000 >/dev/null 2>&1 && echo "WARNING: something is listening on 3000" || echo "OK: nothing listening on 3000 (lsof)"

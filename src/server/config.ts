@@ -1,6 +1,6 @@
-// S4 config — PayPal sandbox only, never live.
-// Secrets live in local .env only, never in code, never in chat, never committed.
-// Read .env.example for the names. Do NOT paste a secret in chat.
+// Payouts config — PayPal sandbox only, never live.
+// Secrets live in local .env only, never in code, never in a message, never committed.
+// Read .env.example for the names. Do NOT paste a secret in a message.
 export interface SettleConfig {
   clientId: string;
   clientSecret: string;

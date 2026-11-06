@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Gate 1 spike, S1 — Payouts sandbox, curl only, no app code.
-# Plan: implementation-plan.md S1. Tracker: S1.1-S1.4.
-# Run from the repo root: bash scripts/gate1-payouts.sh
+# First sandbox Payouts test, curl only, no app code.
+# Run from the repo root: bash scripts/payouts-smoke-test.sh
 # Needs a local .env with PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET,
 # PAYPAL_SANDBOX_RECEIVER_EMAIL. Secrets live in .env only.
-# Never paste the Client Secret or access token in chat.
-# Never commit evidence/gate1-payouts/token-response.json — it holds a token.
+# Never paste the Client Secret or access token in a message.
+# Never commit evidence/payouts-first-test/token-response.json — it holds a token.
 set -u
 cd "$(dirname "$0")/.."
 
-EVIDENCE="evidence/gate1-payouts"
+EVIDENCE="evidence/payouts-first-test"
 mkdir -p "$EVIDENCE"
 
 if [ ! -f .env ]; then
@@ -40,7 +39,7 @@ if [ -z "$PAYPAL_TOKEN" ]; then
   cat "$EVIDENCE/token-response.json"; echo
   exit 1
 fi
-echo "Token saved to $EVIDENCE/token-response.json (do NOT commit, do NOT paste in chat)."
+echo "Token saved to $EVIDENCE/token-response.json (do NOT commit, do NOT paste in a message)."
 
 export BATCH_ID="settle-test-$(date +%s)"
 echo "Step 2 — payout batch, BATCH_ID=$BATCH_ID"
@@ -75,7 +74,7 @@ python3 -c "import json; d=json.load(open('$EVIDENCE/payout-create.json')); prin
 
 PAYOUT_BATCH_ID=$(python3 -c "import json; print(json.load(open('$EVIDENCE/payout-create.json')).get('batch_header',{}).get('payout_batch_id',''))")
 if [ -z "$PAYOUT_BATCH_ID" ]; then
-  echo "No payout_batch_id — read $EVIDENCE/payout-create.json. 403 = real fail, flip to KeepSub tonight. 400 duplicate = fresh BATCH_ID, re-run."
+  echo "No payout_batch_id — read $EVIDENCE/payout-create.json. 403 = the sender is not allowed to send payouts. 400 duplicate = fresh BATCH_ID, re-run."
   cat "$EVIDENCE/payout-create.json"; echo
   exit 1
 fi
@@ -93,4 +92,4 @@ python3 -c "import json; d=json.load(open('$EVIDENCE/payout-poll.json')); print(
 
 echo "Done. Evidence in $EVIDENCE/ — payout-create.json and payout-poll.json."
 echo "Pass = payout_batch_id present, poll shows SUCCESS. UNCLAIMED = receiver is not a sandbox account, swap email, re-run with a fresh BATCH_ID."
-echo "Reply to Muse with pass/fail plus error code only: 401, 403, or 400 duplicate."
+echo "Report pass/fail plus error code only: 401, 403, or 400 duplicate."

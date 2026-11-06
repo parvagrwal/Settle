@@ -1,4 +1,4 @@
-// S4 paypalClient — one place that talks to PayPal.
+// Payouts client — one place that talks to PayPal.
 // Bearer header, unique PayPal-Request-Id, 401 refresh-once, 429 backoff,
 // 5xx retry with the SAME PayPal-Request-Id and the SAME sender_batch_id.
 // A retry must never create a second payment. That is the idempotency rule.

@@ -1,8 +1,8 @@
-// S4 live smoke test — Payouts via the S4 code, sandbox only, $1 x 2.
+// Live smoke test — Payouts, sandbox only, $1 x 2.
 // Run: node --experimental-strip-types scripts/run-payout.ts
 // Needs local .env with PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET,
-// PAYPAL_ENV=sandbox, PAYPAL_SANDBOX_RECEIVER_EMAIL. Never paste secrets in chat.
-// Saves raw JSON to evidence/payouts/s4-create.json and evidence/payouts/s4-poll.json.
+// PAYPAL_ENV=sandbox, PAYPAL_SANDBOX_RECEIVER_EMAIL. Never paste secrets in a message.
+// Saves raw JSON to evidence/payouts/payouts-create.json and evidence/payouts/payouts-poll.json.
 // Pass: payout_batch_id present, poll shows SUCCESS. UNCLAIMED means the
 // receiver is not a sandbox account, swap the email and re-run with a fresh batch.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -76,12 +76,12 @@ for (const job of [...result.accepted, ...result.rejected]) {
 
 mkdirSync("evidence/payouts", { recursive: true });
 writeFileSync(
-  "evidence/payouts/s4-create.json",
+  "evidence/payouts/payouts-create.json",
   JSON.stringify({ payout_batch_id: result.payoutBatchId, batch_status: result.batchStatus, sender_batch_id: result.senderBatchId, jobs }, null, 2),
 );
 writeFileSync(
-  "evidence/payouts/s4-poll.json",
+  "evidence/payouts/payouts-poll.json",
   JSON.stringify({ payout_batch_id: result.payoutBatchId, batch_status: result.batchStatus }, null, 2),
 );
-console.log("Done. Evidence in evidence/payouts/s4-create.json and evidence/payouts/s4-poll.json.");
+console.log("Done. Evidence in evidence/payouts/payouts-create.json and evidence/payouts/payouts-poll.json.");
 console.log("Pass = payout_batch_id present, poll shows SUCCESS.");

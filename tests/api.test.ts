@@ -1,4 +1,4 @@
-// S4 api tests — Payouts integration, with a mock fetch. No live PayPal call,
+// Payouts integration tests — with a mock fetch. No live PayPal call,
 // no money moved, in these tests. Live Payouts is proved separately, in
 // scripts/run-payout.ts, with sandbox $1 items, and saved in evidence/payouts/.
 // Run: node --test tests/api.test.ts

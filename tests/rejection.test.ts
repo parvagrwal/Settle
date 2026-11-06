@@ -1,4 +1,4 @@
-// S3 rejection test — docs/ARCHITECTURE.md Section 7.
+// Rejection test — docs/ARCHITECTURE.md Section 7.
 // Run with all application processes stopped. No server, no PayPal call,
 // no money moved. It tests decide() directly, the enforcement point.
 // Pass: all four attempts fail, policy reads back unchanged.

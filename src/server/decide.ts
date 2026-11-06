@@ -1,7 +1,7 @@
 import type { Decision, PaymentRequest, Policy, State } from "../shared/types.ts";
 import type { RejectLabel } from "../shared/labels.ts";
 
-// Reference model, the ground truth (PRD §7, plan S2). Pure function:
+// Reference model, the ground truth (product plan, decision rules). Pure function:
 // no I/O, no PayPal call, no model call. Every payment path must call
 // this before any PayPal call; the model never instructs a payment.
 // Precedence, highest first:
@@ -14,7 +14,7 @@ import type { RejectLabel } from "../shared/labels.ts";
 // Amounts use BigInt for the window sum so a maximum representable
 // amount becomes WindowCapExceeded, never an overflow or a panic.
 // Expiry: now >= approvalExpiresAtMs means the approval has lapsed, so
-// the job is not approved (see labels.ts note on "SessionExpired").
+// the job is not approved (see labels.ts note on "expired approval").
 // Window rollover is the caller's job: it passes spentInWindowCents for
 // the current window (0 at the first instant of a new window).
 export function decide(

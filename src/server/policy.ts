@@ -1,6 +1,6 @@
 import type { Policy } from "../shared/types.ts";
 
-// Locked caps from the pick file / PRD. Do not change without Parv's sign-off.
+// Locked caps from the product plan. Do not change without Parv's sign-off.
 // Worst-case exposure: $1,500 per week. Print that wherever a cap is shown.
 export const DEFAULT_POLICY: Policy = {
   perPaymentCapCents: 20000, // $200 per payment

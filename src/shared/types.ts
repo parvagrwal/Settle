@@ -1,7 +1,7 @@
 import type { RejectLabel } from "./labels.ts";
 
 // Amounts are integer cents everywhere in code. Dollars appear only as
-// strings in PayPal payloads (plan S4.3). Worst-case exposure $1,500/week.
+// strings in PayPal payloads (Payouts integration, amounts as integer cents). Worst-case exposure $1,500/week.
 export interface Policy {
   /** Per-payment cap, cents. $200 = 20000. */
   perPaymentCapCents: number;
