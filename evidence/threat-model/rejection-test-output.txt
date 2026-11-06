@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: attempt 1: plain transfer by an unauthorised actor must fail
+ok 1 - attempt 1: plain transfer by an unauthorised actor must fail
+  ---
+  duration_ms: 0.963371
+  type: 'test'
+  ...
+# Subtest: attempt 2: transfer to a recipient not on the allowlist must fail
+ok 2 - attempt 2: transfer to a recipient not on the allowlist must fail
+  ---
+  duration_ms: 0.170648
+  type: 'test'
+  ...
+# Subtest: attempt 3a: over-policy amount $200.01 must fail as PerRequestCapExceeded
+ok 3 - attempt 3a: over-policy amount $200.01 must fail as PerRequestCapExceeded
+  ---
+  duration_ms: 0.223699
+  type: 'test'
+  ...
+# Subtest: attempt 3b: amount that would take the week over $1,500 must fail as WindowCapExceeded
+ok 4 - attempt 3b: amount that would take the week over $1,500 must fail as WindowCapExceeded
+  ---
+  duration_ms: 0.166502
+  type: 'test'
+  ...
+# Subtest: attempt 4: owner function signed by the constrained actor must fail, policy unchanged
+ok 5 - attempt 4: owner function signed by the constrained actor must fail, policy unchanged
+  ---
+  duration_ms: 0.895863
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 167.986075
