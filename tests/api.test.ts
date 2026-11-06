@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createPayoutBatch, pollPayoutBatch, centsToDollars, PayPalError } from "../src/server/payouts.ts";
 import { payApprovedJobs, type Job } from "../src/server/jobs.ts";
+import { createInvoice, sendInvoice, billApprovedJobs } from "../src/server/invoicing.ts";
 
 type MockResponse = {
   status: number;
@@ -310,4 +311,161 @@ test("payApprovedJobs: accepted jobs get the batch ID and paid status, rejected 
   assert.equal(result.rejected.length, 1);
   assert.equal(result.rejected[0].job_id, "job-2");
   assert.equal(result.rejected[0].status, "waiting_for_meera");
+});
+
+test("invoice build rejects an unapproved job, mock PayPal is never called", async () => {
+  let calls = 0;
+  const fetchFn = (async () => {
+    calls++;
+    return mockResponse(201, {});
+  }) as unknown as typeof fetch;
+  const result = await createInvoice({
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "test-token",
+    jobs: [makeJob({ approval_state: "not_approved" })],
+    clientEmail: "client@example.com",
+    clientId: "client-1",
+    fetchFn,
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.invoiceId, null);
+  assert.equal(result.status, "NOT_CREATED");
+  assert.equal(result.rejected.length, 1);
+  assert.equal(result.rejected[0].label, "JobNotApproved");
+});
+
+test("invoice build rejects a job already billed, mock PayPal is never called", async () => {
+  let calls = 0;
+  const fetchFn = (async () => {
+    calls++;
+    return mockResponse(201, {});
+  }) as unknown as typeof fetch;
+  const result = await createInvoice({
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "test-token",
+    jobs: [makeJob({ job_id: "job-1" })],
+    clientEmail: "client@example.com",
+    clientId: "client-1",
+    alreadyInvoicedJobIds: new Set(["job-1"]),
+    fetchFn,
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.invoiceId, null);
+  assert.equal(result.rejected[0].label, "DuplicatePayout");
+});
+
+test("create invoice sends the right payload, items from the same approved jobs", async () => {
+  const seen: Array<{ url: string; init: Record<string, unknown> }> = [];
+  const fetchFn = (async (url: string, init: Record<string, unknown>) => {
+    seen.push({ url, init });
+    return mockResponse(201, { id: "INV2-TEST-123", status: "DRAFT" });
+  }) as unknown as typeof fetch;
+  const result = await createInvoice({
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "test-token",
+    jobs: [
+      makeJob({ job_id: "job-1", amount_cents: 10000 }),
+      makeJob({ job_id: "job-2", freelancer_id: "freelancer-2", paypal_email: "f2@example.com", amount_cents: 100 }),
+    ],
+    clientEmail: "client@example.com",
+    clientId: "client-1",
+    invoiceNumber: "settle-test-1",
+    fetchFn,
+  });
+  assert.equal(result.invoiceId, "INV2-TEST-123");
+  assert.equal(result.status, "DRAFT");
+  assert.deepEqual(result.jobIds, ["job-1", "job-2"]);
+  assert.equal(result.totalCents, 10100);
+  // Two calls: POST create, then GET to read the invoice back.
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].url, "https://api-m.sandbox.paypal.com/v2/invoicing/invoices");
+  assert.equal(seen[1].url, "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-TEST-123");
+  const body = JSON.parse(seen[0].init.body as string) as Record<string, unknown>;
+  const detail = body.detail as Record<string, unknown>;
+  assert.equal(detail.invoice_number, "settle-test-1");
+  assert.equal(detail.currency_code, "USD");
+  const recipients = body.primary_recipients as Array<Record<string, Record<string, string>>>;
+  assert.equal(recipients[0].billing_info.email_address, "client@example.com");
+  const items = body.items as Array<Record<string, unknown>>;
+  assert.equal(items.length, 2);
+  assert.match(items[0].name as string, /job-1/);
+  assert.deepEqual(items[0].unit_amount, { currency_code: "USD", value: "100.00" });
+  assert.match(items[1].name as string, /job-2/);
+  assert.deepEqual(items[1].unit_amount, { currency_code: "USD", value: "1.00" });
+});
+
+test("create invoice reads the ID from the self link when the reply has no id", async () => {
+  const seen: string[] = [];
+  const fetchFn = (async (url: string) => {
+    seen.push(url);
+    if (url.endsWith("/v2/invoicing/invoices")) {
+      // The live sandbox reply: a single self link, no id, no status.
+      return mockResponse(201, {
+        rel: "self",
+        href: "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-LINK-789",
+        method: "GET",
+      });
+    }
+    return mockResponse(200, { id: "INV2-LINK-789", status: "DRAFT" });
+  }) as unknown as typeof fetch;
+  const result = await createInvoice({
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "test-token",
+    jobs: [makeJob({ job_id: "job-1", amount_cents: 100 })],
+    clientEmail: "client@example.com",
+    clientId: "client-1",
+    fetchFn,
+  });
+  assert.equal(result.invoiceId, "INV2-LINK-789");
+  assert.equal(result.status, "DRAFT");
+  assert.deepEqual(result.jobIds, ["job-1"]);
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1], "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-LINK-789");
+});
+
+test("send invoice returns SENT, read back by GET", async () => {
+  const seen: string[] = [];
+  const fetchFn = (async (url: string, init: Record<string, unknown>) => {
+    seen.push(url);
+    if (url.endsWith("/send")) {
+      return mockResponse(200, { id: "INV2-TEST-456", status: "SENT" });
+    }
+    return mockResponse(200, { id: "INV2-TEST-456", status: "SENT" });
+  }) as unknown as typeof fetch;
+  const result = await sendInvoice({
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "test-token",
+    invoiceId: "INV2-TEST-456",
+    fetchFn,
+  });
+  assert.equal(result.invoiceId, "INV2-TEST-456");
+  assert.equal(result.status, "SENT");
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0], "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-TEST-456/send");
+  assert.equal(seen[1], "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-TEST-456");
+});
+
+test("invoicing failure leaves the payout standing, invoice row is manual", async () => {
+  const fetchFn = (async () =>
+    mockResponse(400, { name: "VALIDATION_ERROR", message: "invoice failed" })) as unknown as typeof fetch;
+  const jobs = [
+    makeJob({ job_id: "job-1", amount_cents: 100, status: "paid", payout_batch_id: "BATCH-JOBS" }),
+    makeJob({ job_id: "job-2", freelancer_id: "freelancer-2", paypal_email: "f2@example.com", amount_cents: 100, status: "paid", payout_batch_id: "BATCH-JOBS" }),
+  ];
+  const result = await billApprovedJobs({
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "test-token",
+    jobs,
+    clientEmail: "client@example.com",
+    clientId: "client-1",
+    fetchFn,
+  });
+  assert.equal(result.manual, true);
+  assert.equal(result.invoice, null);
+  assert.match(result.error ?? "", /VALIDATION_ERROR/);
+  // The payout still stands: jobs are untouched by the failed bill.
+  assert.equal(jobs[0].status, "paid");
+  assert.equal(jobs[0].payout_batch_id, "BATCH-JOBS");
+  assert.equal(jobs[1].status, "paid");
+  assert.equal(jobs[1].payout_batch_id, "BATCH-JOBS");
 });

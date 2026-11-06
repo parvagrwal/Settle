@@ -1,0 +1,9 @@
+{
+  "invoice_id": "INV2-QZ27-GV5H-DM37-T8TH",
+  "status": "DRAFT",
+  "jobs": [
+    "settle-s4-1",
+    "settle-s4-2"
+  ],
+  "total_cents": 200
+}
