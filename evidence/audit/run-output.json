@@ -1,0 +1,19 @@
+{
+  "part1": {
+    "accepted": [
+      "settle-audit-1",
+      "settle-audit-2"
+    ],
+    "payoutBatchId": "RBZ4V8LCSSK5W",
+    "batchStatus": "SUCCESS"
+  },
+  "part2": {
+    "rejected": [
+      {
+        "job_id": "settle-audit-3",
+        "label": "PerRequestCapExceeded",
+        "reason": "payment exceeds the $200 per-payment cap"
+      }
+    ]
+  }
+}

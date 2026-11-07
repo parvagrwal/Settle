@@ -1,0 +1,57 @@
+[
+  {
+    "actor": "agent",
+    "job_id": "settle-groq-1",
+    "action": "accepted",
+    "reason": "accepted: approved job, allowed recipient, within the $200 per-payment cap and the $1,500 weekly cap",
+    "amount_cents": 100,
+    "payout_batch_id": null,
+    "paypal_transaction_id": null,
+    "at": 1794036483157,
+    "audit_id": "audit-1"
+  },
+  {
+    "actor": "agent",
+    "job_id": "settle-groq-2",
+    "action": "accepted",
+    "reason": "accepted: approved job, allowed recipient, within the $200 per-payment cap and the $1,500 weekly cap",
+    "amount_cents": 100,
+    "payout_batch_id": null,
+    "paypal_transaction_id": null,
+    "at": 1794036483157,
+    "audit_id": "audit-2"
+  },
+  {
+    "actor": "agent",
+    "job_id": "settle-groq-1",
+    "action": "paid",
+    "reason": "paid in batch JHG24Y874LK58, status SUCCESS",
+    "amount_cents": 100,
+    "payout_batch_id": "JHG24Y874LK58",
+    "paypal_transaction_id": null,
+    "audit_id": "audit-3",
+    "at": 1794036521204
+  },
+  {
+    "actor": "agent",
+    "job_id": "settle-groq-2",
+    "action": "paid",
+    "reason": "paid in batch JHG24Y874LK58, status SUCCESS",
+    "amount_cents": 100,
+    "payout_batch_id": "JHG24Y874LK58",
+    "paypal_transaction_id": null,
+    "audit_id": "audit-4",
+    "at": 1794036521204
+  },
+  {
+    "actor": "agent",
+    "job_id": "settle-groq-3",
+    "action": "rejected",
+    "reason": "PerRequestCapExceeded: payment exceeds the $200 per-payment cap",
+    "amount_cents": 99900,
+    "payout_batch_id": null,
+    "paypal_transaction_id": null,
+    "at": 1794036521204,
+    "audit_id": "audit-5"
+  }
+]

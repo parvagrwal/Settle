@@ -1,0 +1,24 @@
+{
+  "proposer": {
+    "source": "model",
+    "ms": 519,
+    "reason": null
+  },
+  "part1": {
+    "accepted": [
+      "settle-groq-1",
+      "settle-groq-2"
+    ],
+    "payoutBatchId": "JHG24Y874LK58",
+    "batchStatus": "SUCCESS"
+  },
+  "part2": {
+    "rejected": [
+      {
+        "job_id": "settle-groq-3",
+        "label": "PerRequestCapExceeded",
+        "reason": "payment exceeds the $200 per-payment cap"
+      }
+    ]
+  }
+}

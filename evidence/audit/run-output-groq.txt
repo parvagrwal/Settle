@@ -1,0 +1,8 @@
+Token: HTTP 200, token received. Token is NOT printed, NOT saved to a committed file.
+PROPOSER: model, model call took 519 ms.
+Part 1: accepted 2, rejected 0.
+AGENT_LOOP_GROQ: PAID batch JHG24Y874LK58, status SUCCESS.
+  settle-groq-1: paid, batch JHG24Y874LK58, reason none.
+  settle-groq-2: paid, batch JHG24Y874LK58, reason none.
+Part 2: invented $999 proposal rejected as PerRequestCapExceeded, payout batch none.
+  settle-groq-3: waiting_for_meera, reason PerRequestCapExceeded: payment exceeds the $200 per-payment cap.
