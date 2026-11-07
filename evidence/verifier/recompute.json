@@ -1,0 +1,697 @@
+{
+  "payoutBatchId": "4P79GAKFE3XA4",
+  "storedRows": [
+    {
+      "jobId": "settle-s4-1",
+      "freelancerId": "freelancer-1",
+      "receiverEmail": "sb-nxn4n45090184@personal.example.com",
+      "amountCents": 100,
+      "currency": "USD",
+      "payoutBatchId": "4P79GAKFE3XA4",
+      "payoutItemId": null,
+      "transactionId": null,
+      "status": "paid"
+    },
+    {
+      "jobId": "settle-s4-2",
+      "freelancerId": "freelancer-2",
+      "receiverEmail": "sb-nxn4n45090184@personal.example.com",
+      "amountCents": 100,
+      "currency": "USD",
+      "payoutBatchId": "4P79GAKFE3XA4",
+      "payoutItemId": null,
+      "transactionId": null,
+      "status": "paid"
+    }
+  ],
+  "reporting": {
+    "transaction_details": [
+      {
+        "transaction_info": {
+          "transaction_id": "2HD228021P221584C",
+          "transaction_event_code": "T1900",
+          "transaction_initiation_date": "2026-11-04T01:00:56Z",
+          "transaction_updated_date": "2026-11-04T01:00:56Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "5000.00"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Initial balance",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "5000.00"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "5000.00"
+          },
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {}
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "transaction_id": "2RP84053S6151754Y",
+          "transaction_event_code": "T1503",
+          "transaction_initiation_date": "2026-11-06T12:14:11Z",
+          "transaction_updated_date": "2026-11-06T12:14:11Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "-2.04"
+          },
+          "transaction_status": "S",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4997.96"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4997.96"
+          },
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {}
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "paypal_account_id": "UGWFCZUEJ33H8",
+          "transaction_id": "1NA354550C6233252",
+          "paypal_reference_id": "2RP84053S6151754Y",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T0001",
+          "transaction_initiation_date": "2026-11-06T12:14:19Z",
+          "transaction_updated_date": "2026-11-06T12:14:19Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "-1.00"
+          },
+          "fee_amount": {
+            "currency_code": "USD",
+            "value": "-0.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle test payout",
+          "transaction_note": "Settle test 1",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4996.94"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4996.94"
+          },
+          "custom_field": "settle-1",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "account_id": "UGWFCZUEJ33H8",
+          "email_address": "sb-nxn4n45090184@personal.example.com",
+          "phone_number": {
+            "country_code": "91",
+            "national_number": "2024862323"
+          },
+          "address_status": "N",
+          "payer_status": "Y",
+          "payer_name": {
+            "given_name": "John",
+            "surname": "Doe",
+            "alternate_full_name": "John Doe"
+          },
+          "country_code": "IN",
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {
+          "name": "John, Doe"
+        },
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "transaction_id": "0XM877827D389854G",
+          "paypal_reference_id": "2RP84053S6151754Y",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T1105",
+          "transaction_initiation_date": "2026-11-06T12:14:19Z",
+          "transaction_updated_date": "2026-11-06T12:14:19Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "1.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle test payout",
+          "transaction_note": "Settle test 1",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4997.96"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4997.96"
+          },
+          "custom_field": "settle-1",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {},
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "paypal_account_id": "UGWFCZUEJ33H8",
+          "transaction_id": "0JP76339SR827243B",
+          "paypal_reference_id": "2RP84053S6151754Y",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T0001",
+          "transaction_initiation_date": "2026-11-06T12:14:19Z",
+          "transaction_updated_date": "2026-11-06T12:14:19Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "-1.00"
+          },
+          "fee_amount": {
+            "currency_code": "USD",
+            "value": "-0.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle test payout",
+          "transaction_note": "Settle test 2",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4996.94"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4996.94"
+          },
+          "custom_field": "settle-2",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "account_id": "UGWFCZUEJ33H8",
+          "email_address": "sb-nxn4n45090184@personal.example.com",
+          "phone_number": {
+            "country_code": "91",
+            "national_number": "2024862323"
+          },
+          "address_status": "N",
+          "payer_status": "Y",
+          "payer_name": {
+            "given_name": "John",
+            "surname": "Doe",
+            "alternate_full_name": "John Doe"
+          },
+          "country_code": "IN",
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {
+          "name": "John, Doe"
+        },
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "transaction_id": "64K4621819241105E",
+          "paypal_reference_id": "2RP84053S6151754Y",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T1105",
+          "transaction_initiation_date": "2026-11-06T12:14:19Z",
+          "transaction_updated_date": "2026-11-06T12:14:19Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "1.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle test payout",
+          "transaction_note": "Settle test 2",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4997.96"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4997.96"
+          },
+          "custom_field": "settle-2",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {},
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "transaction_id": "2WT35598F1611980J",
+          "transaction_event_code": "T1503",
+          "transaction_initiation_date": "2026-11-06T12:43:36Z",
+          "transaction_updated_date": "2026-11-06T12:43:36Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "-2.04"
+          },
+          "transaction_status": "S",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4995.92"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4995.92"
+          },
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {}
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "paypal_account_id": "UGWFCZUEJ33H8",
+          "transaction_id": "15K58049FG042505K",
+          "paypal_reference_id": "2WT35598F1611980J",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T0001",
+          "transaction_initiation_date": "2026-11-06T12:43:45Z",
+          "transaction_updated_date": "2026-11-06T12:43:45Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "-1.00"
+          },
+          "fee_amount": {
+            "currency_code": "USD",
+            "value": "-0.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle payout",
+          "transaction_note": "Settle payout settle-s4-2",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4994.90"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4994.90"
+          },
+          "custom_field": "settle-s4-2",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "account_id": "UGWFCZUEJ33H8",
+          "email_address": "sb-nxn4n45090184@personal.example.com",
+          "phone_number": {
+            "country_code": "91",
+            "national_number": "2024862323"
+          },
+          "address_status": "N",
+          "payer_status": "Y",
+          "payer_name": {
+            "given_name": "John",
+            "surname": "Doe",
+            "alternate_full_name": "John Doe"
+          },
+          "country_code": "IN",
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {
+          "name": "John, Doe"
+        },
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "transaction_id": "633398343W194435Y",
+          "paypal_reference_id": "2WT35598F1611980J",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T1105",
+          "transaction_initiation_date": "2026-11-06T12:43:45Z",
+          "transaction_updated_date": "2026-11-06T12:43:45Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "1.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle payout",
+          "transaction_note": "Settle payout settle-s4-2",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4995.92"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4995.92"
+          },
+          "custom_field": "settle-s4-2",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {},
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "paypal_account_id": "UGWFCZUEJ33H8",
+          "transaction_id": "70B12923D0721914R",
+          "paypal_reference_id": "2WT35598F1611980J",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T0001",
+          "transaction_initiation_date": "2026-11-06T12:43:45Z",
+          "transaction_updated_date": "2026-11-06T12:43:45Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "-1.00"
+          },
+          "fee_amount": {
+            "currency_code": "USD",
+            "value": "-0.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle payout",
+          "transaction_note": "Settle payout settle-s4-1",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4994.90"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4994.90"
+          },
+          "custom_field": "settle-s4-1",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "account_id": "UGWFCZUEJ33H8",
+          "email_address": "sb-nxn4n45090184@personal.example.com",
+          "phone_number": {
+            "country_code": "91",
+            "national_number": "2024862323"
+          },
+          "address_status": "N",
+          "payer_status": "Y",
+          "payer_name": {
+            "given_name": "John",
+            "surname": "Doe",
+            "alternate_full_name": "John Doe"
+          },
+          "country_code": "IN",
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {
+          "name": "John, Doe"
+        },
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      },
+      {
+        "transaction_info": {
+          "transaction_id": "39514354A0436460G",
+          "paypal_reference_id": "2WT35598F1611980J",
+          "paypal_reference_id_type": "TXN",
+          "transaction_event_code": "T1105",
+          "transaction_initiation_date": "2026-11-06T12:43:45Z",
+          "transaction_updated_date": "2026-11-06T12:43:45Z",
+          "transaction_amount": {
+            "currency_code": "USD",
+            "value": "1.02"
+          },
+          "transaction_status": "S",
+          "transaction_subject": "Settle payout",
+          "transaction_note": "Settle payout settle-s4-1",
+          "ending_balance": {
+            "currency_code": "USD",
+            "value": "4995.92"
+          },
+          "available_balance": {
+            "currency_code": "USD",
+            "value": "4995.92"
+          },
+          "custom_field": "settle-s4-1",
+          "protection_eligibility": "02",
+          "instrument_type": "PayPal",
+          "instrument_sub_type": "PayPal Wallet"
+        },
+        "payer_info": {
+          "address_status": "N",
+          "payer_name": {},
+          "address": {
+            "line1": "Flat no. 507 Wing A Raheja Residency",
+            "line2": "Film City Road, Goregaon East",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "country_code": "IN",
+            "postal_code": "400097"
+          }
+        },
+        "shipping_info": {},
+        "cart_info": {},
+        "store_info": {},
+        "auction_info": {},
+        "incentive_info": {}
+      }
+    ],
+    "account_number": "ZD5EK8788GX3Y",
+    "start_date": "2026-10-31T07:05:51Z",
+    "end_date": "2026-11-07T05:29:59Z",
+    "last_refreshed_datetime": "2026-11-07T05:29:59Z",
+    "page": 1,
+    "total_items": 11,
+    "total_pages": 1,
+    "links": [
+      {
+        "href": "https://api.sandbox.paypal.com/v1/reporting/transactions?start_date=2026-10-31T07%3A05%3A51Z&end_date=2026-11-07T07%3A05%3A51Z&fields=all&page_size=500&page=1",
+        "rel": "self",
+        "method": "GET",
+        "encType": "application/json"
+      }
+    ]
+  },
+  "payouts": {
+    "batch_header": {
+      "payout_batch_id": "4P79GAKFE3XA4",
+      "batch_status": "SUCCESS",
+      "time_created": "2026-11-06T12:43:20Z",
+      "time_completed": "2026-11-06T12:43:52Z",
+      "time_closed": "2026-11-06T12:43:52Z",
+      "sender_batch_header": {
+        "sender_batch_id": "settle-1793969002435",
+        "email_subject": "Settle payout"
+      },
+      "funding_source": "BALANCE",
+      "amount": {
+        "currency": "USD",
+        "value": "2.00"
+      },
+      "fees": {
+        "currency": "USD",
+        "value": "0.04"
+      }
+    },
+    "items": [
+      {
+        "payout_item_id": "VQ6JBEN3G724W",
+        "transaction_id": "70B12923D0721914R",
+        "activity_id": "5EK209291R7787822",
+        "transaction_status": "SUCCESS",
+        "payout_item_fee": {
+          "currency": "USD",
+          "value": "0.02"
+        },
+        "payout_batch_id": "4P79GAKFE3XA4",
+        "payout_item": {
+          "recipient_type": "EMAIL",
+          "amount": {
+            "currency": "USD",
+            "value": "1.00"
+          },
+          "note": "Settle payout settle-s4-1",
+          "receiver": "sb-nxn4n45090184@personal.example.com",
+          "sender_item_id": "settle-s4-1",
+          "recipient_wallet": "PAYPAL",
+          "purpose": "GOODS"
+        },
+        "time_processed": "2026-11-06T12:43:45Z",
+        "links": [
+          {
+            "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/VQ6JBEN3G724W",
+            "rel": "item",
+            "method": "GET",
+            "encType": "application/json"
+          }
+        ]
+      },
+      {
+        "payout_item_id": "85T7FSCEE2AX2",
+        "transaction_id": "15K58049FG042505K",
+        "activity_id": "6GS581486N596630M",
+        "transaction_status": "SUCCESS",
+        "payout_item_fee": {
+          "currency": "USD",
+          "value": "0.02"
+        },
+        "payout_batch_id": "4P79GAKFE3XA4",
+        "payout_item": {
+          "recipient_type": "EMAIL",
+          "amount": {
+            "currency": "USD",
+            "value": "1.00"
+          },
+          "note": "Settle payout settle-s4-2",
+          "receiver": "sb-nxn4n45090184@personal.example.com",
+          "sender_item_id": "settle-s4-2",
+          "recipient_wallet": "PAYPAL",
+          "purpose": "GOODS"
+        },
+        "time_processed": "2026-11-06T12:43:45Z",
+        "links": [
+          {
+            "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/85T7FSCEE2AX2",
+            "rel": "item",
+            "method": "GET",
+            "encType": "application/json"
+          }
+        ]
+      }
+    ],
+    "links": [
+      {
+        "href": "https://api.sandbox.paypal.com/v1/payments/payouts/4P79GAKFE3XA4?page_size=1000&page=1",
+        "rel": "self",
+        "method": "GET",
+        "encType": "application/json"
+      }
+    ]
+  },
+  "verifyResult": {
+    "ok": true,
+    "diff": [],
+    "rowsChecked": 2,
+    "reportingCount": 11,
+    "payoutsCount": 2
+  },
+  "codeHashes": {
+    "decide": "842477a5ce3dcec8f23ada30c2be010172d3ab17ffd136c83860539f31acea5b",
+    "policy": "e6b94c6749145b5af21d1bf2458d8dc2d7309f78f040176016053a269d3a680a"
+  }
+}

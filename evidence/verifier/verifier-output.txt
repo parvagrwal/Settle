@@ -1,0 +1,7 @@
+Token: HTTP 200, token received. Token is NOT printed, NOT saved to a committed file.
+Payouts read: batch 4P79GAKFE3XA4, SUCCESS, 2 items.
+Reporting read: 11 transactions in the last 7 days, 2 matching our batch.
+Balance: USD, available $4995.92, total $4995.92.
+Code identity: baseline found, comparing.
+Rows checked: 2, Reporting transactions: 11, Payouts items: 2.
+VERIFIER: MATCH. The stored copy, Reporting, and Payouts all agree.
