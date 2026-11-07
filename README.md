@@ -16,9 +16,10 @@ These are real sandbox receipts from live test runs, not mock data:
 | Agent loop run, two $1.00 payments | `RBZ4V8LCSSK5W` | SUCCESS |
 | Model proposing inside the loop, two $1.00 payments | `JHG24Y874LK58` | SUCCESS |
 | Dashboard pay run, three $1.00 payments | `FY7MPJGJKTA62` | SUCCESS |
+| Second dashboard pay run, three $1.00 payments | `GZ6XT3FLM95QJ` | SUCCESS |
 | Client invoice sent, $2.00 total | `INV2-QZ27-GV5H-DM37-T8TH` | SENT |
 
-Nine $1.00 test payments in total, $9.00, all sandbox test money. The server test suite passes 75 checks, 0 fail (`npm test`).
+Twelve $1.00 test payments in total, $12.00, all sandbox test money. The server test suite passes 75 checks, 0 fail (`npm test`).
 
 ## How it works
 
@@ -49,7 +50,7 @@ The dashboard shows the estimated PayPal fee and the net amount the freelancer r
 
 | Item | Real or seeded |
 | --- | --- |
-| The four payout batches above | Real sandbox receipts |
+| The five payout batches above | Real sandbox receipts |
 | The sent invoice above | Real sandbox receipt |
 | The four paid rows in the dashboard on first load | Real sandbox receipts |
 | The waiting, over-cap, and not-approved rows | Seeded demo jobs, labelled in `data/seed.json` |
