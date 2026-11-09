@@ -50,13 +50,32 @@ interface PayResponse {
   invoice_error?: string | null;
 }
 
-/** Mock PayPal that answers Payouts and Invoicing, and records every call. */
+/** Mock PayPal that answers Payouts and Invoicing, and records every call.
+ * It also answers Groq with the full waiting set, so the pay click goes
+ * through the model allocator the way the live dashboard does. */
 function makePayPalMock(opts: { batchStatus?: string; invoiceFails?: boolean } = {}) {
   const calls: Array<{ url: string; init: Record<string, unknown> }> = [];
   let invoiceGetCount = 0;
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     calls.push({ url, init });
     const method = (init.method as string) ?? "GET";
+    if (url.includes("api.groq.com")) {
+      return mockResponse(200, {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                proposals: [
+                  { jobId: "demo-waiting-1", recipient: "freelancer@example.com", amountCents: 100, reason: "Due first." },
+                  { jobId: "demo-waiting-2", recipient: "freelancer@example.com", amountCents: 100, reason: "Due second." },
+                ],
+                held: [],
+              }),
+            },
+          },
+        ],
+      });
+    }
     if (url.includes("/v1/payments/payouts")) {
       if (method === "POST") {
         return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-INV", batch_status: "PENDING" } });
@@ -121,6 +140,7 @@ test("pay bills only the jobs the payout paid, client email from the server sett
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
     fetchFn: mock.fetchFn,
+    groqApiKey: "test-key",
     clientEmail: "client@example.com",
   });
   const port = await app.listen(0);
@@ -129,7 +149,7 @@ test("pay bills only the jobs the payout paid, client email from the server sett
     assert.equal(paid.payout_batch_id, "BATCH-INV");
     assert.equal(paid.batch_status, "SUCCESS");
     assert.deepEqual(paid.accepted, ["demo-waiting-1", "demo-waiting-2"]);
-    assert.equal(paid.proposer, "rule-based");
+    assert.equal(paid.proposer, "model");
     // The invoice fields ride on the same response, old fields unchanged.
     assert.equal(paid.invoice_id, "INV2-TEST-001");
     assert.equal(paid.invoice_status, "SENT");
@@ -173,6 +193,7 @@ test("second pay click bills nothing new, no second invoice is created", async (
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
     fetchFn: mock.fetchFn,
+    groqApiKey: "test-key",
     clientEmail: "client@example.com",
   });
   const port = await app.listen(0);
@@ -237,6 +258,7 @@ test("failed invoice does not unpay or fail the payout, invoice is manual", asyn
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
     fetchFn: mock.fetchFn,
+    groqApiKey: "test-key",
     clientEmail: "client@example.com",
   });
   const port = await app.listen(0);
@@ -273,6 +295,7 @@ test("no client email configured: payout works, invoice skipped, no invoicing ca
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
     fetchFn: mock.fetchFn,
+    groqApiKey: "test-key",
   });
   const port = await app.listen(0);
   try {
@@ -297,6 +320,7 @@ test("denied batch makes no invoice call, invoice skipped", async () => {
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
     fetchFn: mock.fetchFn,
+    groqApiKey: "test-key",
     clientEmail: "client@example.com",
   });
   const port = await app.listen(0);
@@ -321,6 +345,7 @@ test("jobs already invoiced are not billed again: no new invoice, no invoice cal
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
     fetchFn: mock.fetchFn,
+    groqApiKey: "test-key",
     clientEmail: "client@example.com",
   });
   // Both waiting jobs were already billed in an earlier run on this server.

@@ -20,6 +20,10 @@ interface SeedRow {
   freelancer_id: string;
   amount_cents: number;
   currency: string;
+  /** ISO date the work is due, when known. */
+  due?: string;
+  /** How urgent the job is: high, normal, or low. */
+  priority?: string;
   approval_state: string;
   status: string;
   payout_batch_id: string | null;
@@ -48,7 +52,12 @@ function loadSeedRows(): SeedRow[] {
       item.currency !== "USD" ||
       typeof item.approval_state !== "string" ||
       typeof item.status !== "string" ||
-      typeof item.approved_days_ago !== "number"
+      typeof item.approved_days_ago !== "number" ||
+      (item.due !== undefined && typeof item.due !== "string") ||
+      (item.priority !== undefined &&
+        item.priority !== "high" &&
+        item.priority !== "normal" &&
+        item.priority !== "low")
     ) {
       throw new Error(`seed: a row in data/seed.json is missing a required field, job ${String(item.job_id ?? "unknown")}.`);
     }
@@ -63,6 +72,8 @@ export function seedJobs(receiverEmail: string, nowMs: number = Date.now()): Job
     paypal_email: receiverEmail,
     amount_cents: row.amount_cents,
     currency: "USD",
+    due: row.due ?? null,
+    priority: (row.priority ?? null) as Job["priority"],
     approval_state: row.approval_state as Job["approval_state"],
     approved_at:
       row.approval_state === "not_approved"

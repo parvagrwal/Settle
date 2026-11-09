@@ -1,9 +1,9 @@
-// Live agent loop run with the model proposing — the loop proposes
+// Live agent loop run with the model allocating — the loop allocates
 // through Groq, the decision check disposes, and the audit trail
 // records every decision. Two parts.
 // Part 1 pays two $1.00 demo jobs to the sandbox receiver email, live,
-// proposed by the model when the call works, rule-based on any model
-// failure (the fallback is printed, never silent).
+// allocated by the model when the call works, held for the owner on
+// any model failure (the hold is printed, never silent).
 // Part 2 feeds the loop an invented $999 proposal for a fresh job and
 // shows the check refuse it, with no PayPal call for that job.
 // Sandbox only, test money, no real money moves. Total test money: $2.00.
@@ -18,7 +18,7 @@ import { loadConfig } from "../src/server/config.ts";
 import { PayPalAuth } from "../src/server/auth.ts";
 import { runAgentLoop } from "../src/server/agent.ts";
 import { createAuditLog } from "../src/server/audit.ts";
-import { groqOrRuleBasedProposer } from "../src/server/groqAgent.ts";
+import { groqAllocator } from "../src/server/groqAgent.ts";
 import type { Job } from "../src/server/jobs.ts";
 
 function loadEnv(path = ".env"): void {
@@ -69,11 +69,11 @@ function demoJob(jobId: string): Job {
   };
 }
 
-// Part 1: two real $1.00 demo jobs, paid live, proposed by the model
-// when its call works, rule-based when it does not.
+// Part 1: two real $1.00 demo jobs, paid live, allocated by the model
+// when its call works, held for the owner when it does not.
 const jobs = [demoJob("settle-groq-1"), demoJob("settle-groq-2")];
 const allowlisted = new Set<string>([config.receiverEmail]);
-const wired = await groqOrRuleBasedProposer({ jobs, apiKey: process.env.GROQ_API_KEY ?? "" });
+const wired = await groqAllocator({ jobs, apiKey: process.env.GROQ_API_KEY ?? "", runBudgetCents: 200 });
 out(`PROPOSER: ${wired.source}${wired.ms !== null ? `, model call took ${wired.ms} ms` : ""}.`);
 if (wired.reason !== null) out(`PROPOSER: ${wired.reason}.`);
 const paid = await runAgentLoop({
@@ -84,6 +84,8 @@ const paid = await runAgentLoop({
   baseUrl: config.baseUrl,
   token,
   refreshToken,
+  runBudgetCents: 200,
+  held: wired.held,
 });
 out(`Part 1: accepted ${paid.accepted.length}, rejected ${paid.rejected.length}.`);
 out(`AGENT_LOOP_GROQ: ${paid.payoutBatchId !== null ? "PAID" : "NOTHING_PAID"} batch ${paid.payoutBatchId ?? "none"}, status ${paid.batchStatus ?? "none"}.`);

@@ -278,7 +278,7 @@ test("rule-based proposer proposes approved waiting jobs only, labelled rule-bas
   assert.equal(proposals[0].source, "rule-based");
 });
 
-test("routes: owner approves a new email once, then pay pays it, audit shows all three steps", async () => {
+test("routes: owner approves a new email once, pay holds for the owner, then Pay Selected pays it, audit shows all four steps", async () => {
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     const method = (init.method as string) ?? "GET";
     if (method === "POST") {
@@ -307,11 +307,37 @@ test("routes: owner approves a new email once, then pay pays it, audit shows all
     assert.equal(approved.job.approval_state, "approved");
     assert.ok(app.store.allowlistedEmails.has("freelancer@example.com"));
 
-    const payRes = await fetch(`${base}/api/pay`, { method: "POST" });
+    // No Groq key was passed, so the first Pay holds for the owner to
+    // pick by hand and pays nothing.
+    const holdRes = await fetch(`${base}/api/pay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(holdRes.status, 200);
+    const held = (await holdRes.json()) as {
+      payout_batch_id: string | null;
+      accepted: string[];
+      proposer: string;
+      held_for_selection: string[];
+      hold_reason: string | null;
+    };
+    assert.equal(held.payout_batch_id, null);
+    assert.deepEqual(held.accepted, []);
+    assert.equal(held.proposer, "manual-hold");
+    assert.deepEqual(held.held_for_selection, ["job-1"]);
+    assert.match(held.hold_reason ?? "", /pick the jobs by hand/);
+
+    const payRes = await fetch(`${base}/api/pay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedJobIds: ["job-1"] }),
+    });
     assert.equal(payRes.status, 200);
-    const paid = (await payRes.json()) as { payout_batch_id: string; accepted: string[] };
+    const paid = (await payRes.json()) as { payout_batch_id: string; accepted: string[]; proposer: string };
     assert.equal(paid.payout_batch_id, "BATCH-7");
     assert.deepEqual(paid.accepted, ["job-1"]);
+    assert.equal(paid.proposer, "owner");
 
     const gridRes = await fetch(`${base}/api/grid`);
     const grid = (await gridRes.json()) as { rows: Array<{ job_id: string; status: string; payout_batch_id: string | null }> };
@@ -321,6 +347,7 @@ test("routes: owner approves a new email once, then pay pays it, audit shows all
     const auditRes = await fetch(`${base}/api/audit`);
     const auditBody = (await auditRes.json()) as { rows: Array<{ actor: string; action: string }> };
     assert.ok(auditBody.rows.some((row) => row.actor === "owner" && row.action === "accepted"));
+    assert.ok(auditBody.rows.some((row) => row.actor === "agent" && row.action === "held"));
     assert.ok(auditBody.rows.some((row) => row.actor === "agent" && row.action === "accepted"));
     assert.ok(auditBody.rows.some((row) => row.actor === "agent" && row.action === "paid"));
   } finally {

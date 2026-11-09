@@ -76,10 +76,12 @@ test("static serving: home page, asset, missing asset 404, screen falls back to 
   }
 });
 
-test("pay with seed jobs: waiting jobs paid, over-cap refused, proposer named", async () => {
+test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the waiting jobs", async () => {
+  let payoutCalls = 0;
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     const method = (init.method as string) ?? "GET";
     if (method === "POST") {
+      payoutCalls++;
       return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "PENDING" } });
     }
     return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "SUCCESS" } });
@@ -95,7 +97,33 @@ test("pay with seed jobs: waiting jobs paid, over-cap refused, proposer named", 
   const port = await app.listen(0);
   try {
     const base = `http://127.0.0.1:${port}`;
-    const payRes = await fetch(`${base}/api/pay`, { method: "POST" });
+    // No Groq key was passed, so the Pay click holds for the owner to
+    // pick by hand and pays nothing.
+    const holdRes = await fetch(`${base}/api/pay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(holdRes.status, 200);
+    const held = (await holdRes.json()) as {
+      payout_batch_id: string | null;
+      accepted: string[];
+      rejected: Array<{ job_id: string; label: string }>;
+      proposer: string;
+      held_for_selection: string[];
+    };
+    assert.equal(held.payout_batch_id, null);
+    assert.deepEqual(held.accepted, []);
+    assert.deepEqual(held.rejected, []);
+    assert.equal(held.proposer, "manual-hold");
+    assert.deepEqual(held.held_for_selection, ["demo-waiting-1", "demo-waiting-2"]);
+    assert.equal(payoutCalls, 0);
+
+    const payRes = await fetch(`${base}/api/pay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedJobIds: ["demo-waiting-1", "demo-waiting-2"] }),
+    });
     assert.equal(payRes.status, 200);
     const paid = (await payRes.json()) as {
       payout_batch_id: string;
@@ -105,11 +133,11 @@ test("pay with seed jobs: waiting jobs paid, over-cap refused, proposer named", 
     };
     assert.equal(paid.payout_batch_id, "BATCH-SERVER");
     assert.deepEqual(paid.accepted, ["demo-waiting-1", "demo-waiting-2"]);
-    // The over-cap job is not proposed again: it waits for the owner, and
-    // its seeded reason stays on its grid row instead of a fresh refusal.
+    // The over-cap job is never a candidate: it waits for the owner,
+    // and its seeded reason stays on its grid row instead of a fresh
+    // refusal.
     assert.deepEqual(paid.rejected, []);
-    // No Groq key was passed, so the loop proposed rule-based, and says so.
-    assert.equal(paid.proposer, "rule-based");
+    assert.equal(paid.proposer, "owner");
 
     const gridRes = await fetch(`${base}/api/grid`);
     const grid = (await gridRes.json()) as { rows: Array<{ job_id: string; status: string; reason: string | null }> };

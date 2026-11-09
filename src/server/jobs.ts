@@ -23,6 +23,10 @@ export interface Job {
   paypal_email: string;
   amount_cents: number;
   currency: "USD";
+  /** ISO date the work is due, when known. The allocator pays the soonest due first. */
+  due?: string | null;
+  /** How urgent the job is. The allocator pays high priority before low. */
+  priority?: "high" | "normal" | "low" | null;
   approval_state: "approved" | "not_approved" | "expired";
   approved_at: number | null;
   status: JobStatus;

@@ -12,7 +12,8 @@ These are real sandbox receipts from live test runs, not mock data:
 
 | What happened | Receipt | Result |
 | --- | --- | --- |
-| First payout test, two $1.00 payments | `4P79GAKFE3XA4` | SUCCESS |
+| First Payouts test, two $1.00 payments | `YFBPVYJBHM9GU` | SUCCESS |
+| Payouts integration test, two $1.00 payments | `4P79GAKFE3XA4` | SUCCESS |
 | Agent loop run, two $1.00 payments | `RBZ4V8LCSSK5W` | SUCCESS |
 | Model proposing inside the loop, two $1.00 payments | `JHG24Y874LK58` | SUCCESS |
 | Dashboard pay run, three $1.00 payments | `FY7MPJGJKTA62` | SUCCESS |
@@ -24,17 +25,17 @@ These are real sandbox receipts from live test runs, not mock data:
 | Practice run 5, three $1.00 payments | `GB736QR4BZJUG` | SUCCESS |
 | Client invoice sent, $2.00 total | `INV2-QZ27-GV5H-DM37-T8TH` | SENT |
 
-Twenty-seven $1.00 test payments in total, $27.00, all sandbox test money. The server test suite passes 86 checks, 0 fail (`npm test`).
+Twenty-nine $1.00 test payments in total, $29.00, all sandbox test money. The server test suite passes 109 checks, 0 fail (`npm test`).
 
 ## How it works
 
 1. The owner approves jobs in the dashboard.
-2. The model proposes payments for the approved jobs. It only proposes; it never decides.
-3. Eight decision rules check every proposal before any PayPal call. If a rule fails, the payment is refused, the refusal is written to the audit trail with its reason, and no PayPal call is made for that job.
+2. The model chooses which approved jobs to pay now and in what order, under the run budget the owner sets for this run, with one reason per chosen job and per held job.
+3. Eight decision rules check every chosen job before any PayPal call. If a rule fails, the payment is refused, the refusal is written to the audit trail with its reason, and no PayPal call is made for that job.
 4. Payments that pass go out in one PayPal Payouts batch. The client is billed at the same time with a PayPal invoice for the same work.
 5. The dashboard grid updates live, with the PayPal payout batch next to every payment.
 
-The model is `gpt-oss-20b` through Groq, free tier. It proposes in structured output, and the decision rules check every proposal against the approved job record. Without a Groq key, the built-in proposer takes over and says so on screen.
+The model is `gpt-oss-20b` through Groq, free tier. It chooses the jobs to pay in structured output, and the decision rules check every chosen job against the approved job record. Without a Groq key, the run holds for the owner to pick the jobs by hand, and says so on screen.
 
 PayPal tools used: Payouts REST API (pay the batch), Invoicing API v2 (bill the client), Reporting API (check the payout landed, from an independent read).
 
@@ -55,7 +56,7 @@ The dashboard shows the estimated PayPal fee and the net amount the freelancer r
 
 | Item | Real or seeded |
 | --- | --- |
-| The ten payout batches above | Real sandbox receipts |
+| The eleven payout batches above | Real sandbox receipts |
 | The sent invoice above | Real sandbox receipt |
 | The four paid rows in the dashboard on first load | Real sandbox receipts |
 | The waiting, over-cap, and not-approved rows | Seeded demo jobs, labelled in `data/seed.json` |
@@ -82,13 +83,13 @@ No values are in this repo. You make every key yourself, and every key stays in 
 
 **PayPal sandbox keys.** Go to [developer.paypal.com](https://developer.paypal.com), sign in, open Dashboard, then My Apps & Credentials, then the Sandbox tab, then Create App. Copy the Client ID and the Client Secret into `.env` as `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. For the receiver email, use a sandbox Personal account email: in the same dashboard, open Sandbox, then Accounts, and make a Personal account if you do not have one. Put its email in `.env` as `PAYPAL_SANDBOX_RECEIVER_EMAIL`.
 
-**Groq key (for the model proposer).** Go to [console.groq.com](https://console.groq.com), sign in, open API Keys, then Create API Key. Put it in `.env` as `GROQ_API_KEY`. Free tier, no card needed. Without it, the dashboard still works and the built-in proposer takes over.
+**Groq key (for the model allocator).** Go to [console.groq.com](https://console.groq.com), sign in, open API Keys, then Create API Key. Put it in `.env` as `GROQ_API_KEY`. Free tier, no card needed. Without it, the dashboard still works and a Pay click holds for the owner to pick the jobs by hand.
 
 ## Try the flow
 
 1. Open the dashboard. You see 8 rows: 4 paid, 2 waiting at $1.00, 1 over the cap at $250.00, 1 waiting for approval.
 2. Click **Approve demo-approve-1**. The running weekly total and the cap left update.
-3. Click **Pay approved jobs**. The waiting jobs are paid live in sandbox test money, and the result screen shows the payout batch, its status, and who proposed it.
+3. Set the run budget for this run (it starts at the weekly cap left). Click **Pay approved jobs**. The model chooses which waiting jobs fit the budget, soonest due and highest priority first, the chosen jobs are paid live in sandbox test money, and the result screen shows the payout batch, its status, who chose the jobs, and which jobs the model held with reasons.
 4. The over-cap job stays held, with its reason and the $50.00 over the cap on screen.
 
 ## Run the tests
@@ -109,7 +110,7 @@ $0 to build and run. PayPal sandbox is free, the Groq free tier is free, AG Stud
 - **403, Payouts not allowed.** Payouts is not enabled for that sandbox app, or the sender country is not allowed. Use a US sandbox test account as the sender.
 - **400, duplicate batch.** The batch was already sent. The server makes a fresh batch on each run.
 - **Payment shows as unclaimed.** The receiver email has no sandbox Personal account behind it. Swap in a real sandbox Personal email and run it again.
-- **429, free-tier limit hit.** Wait a short while and run it again. The model step falls back to the built-in proposer.
+- **429, free-tier limit hit.** Wait a short while and run it again. The run holds for the owner to pick the jobs by hand.
 - **Paying is off on the dashboard.** `.env` has no keys. The dashboard still works with the seeded data. Add the keys and restart the server to pay.
 - **Port 3000 is in use.** Stop the other server, or set `PORT` in `.env` to another port.
 - **A warning about a chunk larger than 500 kB during the build.** Expected. The build still passes; the dashboard library is large.
@@ -120,7 +121,7 @@ $0 to build and run. PayPal sandbox is free, the Groq free tier is free, AG Stud
 - `LICENSE` — MIT license.
 - `.env.example` — the key names, no values.
 - `package.json` — `npm start` runs the server, `npm test` runs the server suite.
-- `src/server/` — the decision rules, Payouts, invoicing, reporting check, audit trail, agent loop, model proposer, and dashboard server.
+- `src/server/` — the decision rules, Payouts, invoicing, reporting check, audit trail, agent loop, model allocator, and dashboard server.
 - `src/shared/` — the shared types and rule labels.
 - `scripts/` — the one-command setup script and the live run scripts.
 - `tests/` — the server test suite.

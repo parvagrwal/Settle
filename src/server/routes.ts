@@ -8,7 +8,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, resolve, extname } from "node:path";
 import { runAgentLoop, type AgentLoopResult } from "./agent.ts";
-import { groqOrRuleBasedProposer } from "./groqAgent.ts";
+import { groqAllocator } from "./groqAgent.ts";
+import { ownerSelectedProposal, type Proposer } from "./model.ts";
 import { billApprovedJobs } from "./invoicing.ts";
 import { centsToDollars } from "./payouts.ts";
 import { DEFAULT_POLICY } from "./policy.ts";
@@ -21,6 +22,8 @@ export interface GridRow {
   job_id: string;
   freelancer_id: string;
   amount_cents: number;
+  due: string | null;
+  priority: "high" | "normal" | "low" | null;
   status: string;
   reason: string | null;
   payout_batch_id: string | null;
@@ -47,6 +50,8 @@ export function gridRows(jobs: Job[]): GridRow[] {
     job_id: job.job_id,
     freelancer_id: job.freelancer_id,
     amount_cents: job.amount_cents,
+    due: job.due ?? null,
+    priority: job.priority ?? null,
     status: job.status,
     reason: job.decision_reason,
     payout_batch_id: job.payout_batch_id,
@@ -114,7 +119,8 @@ export function createSettleServer(opts: {
   token?: string;
   refreshToken?: () => Promise<string>;
   fetchFn?: FetchFn;
-  /** Key for the model proposer. Without it the loop proposes rule-based. */
+  /** Key for the model allocator. Without it the run holds for the
+   * owner to pick the jobs by hand, it never auto-pays the full set. */
   groqApiKey?: string;
   /** Email of the client being billed, set by the owner in local .env.
    * Without it the payout still works and the invoice is skipped. */
@@ -204,30 +210,114 @@ export function createSettleServer(opts: {
           });
           return;
         }
+        const body = await readJsonBody(req);
         // The weekly cap is enforced against what is already paid in this
         // window, not from zero, so the number on screen and the number
         // the check enforces are the same number.
+        const weeklyCapCents = (policy ?? DEFAULT_POLICY).weeklyCapCents;
         const spentInWindowCents = store.jobs
           .filter((job) => job.status === "paid")
           .reduce((sum, job) => sum + job.amount_cents, 0);
-        // The model proposes when its key is set, rule-based when it is
-        // not. Either way the decision check disposes every proposal.
-        const wired = await groqOrRuleBasedProposer({
-          jobs: store.jobs,
-          apiKey: opts.groqApiKey ?? "",
-          fetchFn: opts.fetchFn,
-        });
+        // Run budget: the owner's cap on this run only, in cents. The
+        // dashboard sends dollars and converts; the default is the
+        // weekly cap left, so a run with no budget given can still pay
+        // up to the weekly cap. The store is memory-only, so this is
+        // not a rolling PayPal-time window: a restart rebuilds the
+        // seed jobs.
+        let runBudgetCents = Math.max(0, weeklyCapCents - spentInWindowCents);
+        const rawBudget = body.runBudgetCents;
+        if (rawBudget !== undefined) {
+          if (
+            typeof rawBudget !== "number" ||
+            !Number.isInteger(rawBudget) ||
+            rawBudget <= 0 ||
+            rawBudget > weeklyCapCents
+          ) {
+            sendJson(res, 400, {
+              error: "run budget must be a whole number of cents above $0 and no more than the $1,500 weekly cap",
+            });
+            return;
+          }
+          runBudgetCents = rawBudget;
+        }
+        // The candidates for this run: approved jobs still waiting to
+        // be paid. The over-cap job waits for the owner and is never a
+        // candidate, so the model never sees it.
+        const candidates = store.jobs.filter(
+          (job) => job.approval_state === "approved" && job.status === "waiting",
+        );
+        // Owner selection: the dashboard sends the job ids the owner
+        // picked. Unknown ids are a client error; known jobs the check
+        // refuses are refused by the loop with their label, as usual.
+        let selectedIds: string[] | null = null;
+        const rawSelected = body.selectedJobIds;
+        if (rawSelected !== undefined) {
+          if (!Array.isArray(rawSelected) || !rawSelected.every((entry) => typeof entry === "string")) {
+            sendJson(res, 400, { error: "selected jobs must be a list of job ids" });
+            return;
+          }
+          selectedIds = rawSelected;
+          const unknown = selectedIds.filter((id) => !store.jobs.some((job) => job.job_id === id));
+          if (unknown.length > 0) {
+            sendJson(res, 400, { error: `selected job ${unknown[0]} does not exist` });
+            return;
+          }
+        }
+        // How this run is proposed: the owner's picked jobs first,
+        // then the model allocator when its key is set, else a hold
+        // for the owner to pick by hand. A hold pays nothing and
+        // returns the candidates.
+        let proposer: Proposer;
+        let proposerSource: "model" | "owner" | "manual-hold";
+        let proposerReason: string | null = null;
+        let modelHeld: Array<{ jobId: string; reason: string }> = [];
+        let loopHeld: Array<{ jobId: string; reason: string }> = [];
+        let heldForSelection: string[] = [];
+        let holdReason: string | null = null;
+        if (selectedIds !== null && selectedIds.length > 0) {
+          proposer = ownerSelectedProposal(store.jobs, selectedIds);
+          proposerSource = "owner";
+        } else if (selectedIds !== null) {
+          proposer = () => [];
+          proposerSource = "manual-hold";
+          holdReason = "no jobs were picked, pick the jobs to pay and try again";
+          proposerReason = holdReason;
+          heldForSelection = candidates.map((job) => job.job_id);
+          loopHeld = candidates.map((job) => ({ jobId: job.job_id, reason: holdReason as string }));
+        } else {
+          const wire = await groqAllocator({
+            jobs: candidates,
+            apiKey: opts.groqApiKey ?? "",
+            runBudgetCents,
+            fetchFn: opts.fetchFn,
+          });
+          proposer = wire.proposer;
+          proposerSource = wire.source;
+          proposerReason = wire.reason;
+          modelHeld = wire.held;
+          loopHeld = wire.held;
+          if (wire.source === "manual-hold") {
+            heldForSelection = candidates.map((job) => job.job_id);
+            holdReason = wire.reason;
+            loopHeld = candidates.map((job) => ({
+              jobId: job.job_id,
+              reason: wire.reason ?? "held for the owner to pick",
+            }));
+          }
+        }
         const result: AgentLoopResult = await runAgentLoop({
           jobs: store.jobs,
           allowlistedEmails: store.allowlistedEmails,
           policy,
           spentInWindowCents,
-          proposer: wired.proposer,
+          proposer,
           audit: store.audit,
           baseUrl: opts.baseUrl,
           token: opts.token,
           refreshToken: opts.refreshToken,
           fetchFn: opts.fetchFn,
+          runBudgetCents,
+          held: loopHeld,
         });
         // Billing: the client is billed for the same jobs the payout just
         // paid, with the client email the owner set in local .env. Only a
@@ -319,8 +409,11 @@ export function createSettleServer(opts: {
           rejected: result.rejected.map((r) => ({ job_id: r.proposalJobId, label: r.label, reason: r.reason })),
           payout_batch_id: result.payoutBatchId,
           batch_status: result.batchStatus,
-          proposer: wired.source,
-          proposer_reason: wired.reason,
+          proposer: proposerSource,
+          proposer_reason: proposerReason,
+          held: modelHeld.map((h) => ({ job_id: h.jobId, reason: h.reason })),
+          held_for_selection: heldForSelection,
+          hold_reason: holdReason,
           invoice_id: invoiceId,
           invoice_status: invoiceStatus,
           invoice_total_cents: invoiceTotalCents,

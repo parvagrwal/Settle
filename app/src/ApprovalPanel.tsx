@@ -15,11 +15,21 @@ interface ApprovalPanelProps {
   paying: boolean;
   payError: string | null;
   onApprove: (jobId: string) => void;
-  onPay: () => void;
+  /** Run budget in dollars, set by the owner before Pay. */
+  runBudgetDollars: number;
+  onRunBudgetChange: (dollars: number) => void;
+  onPay: (runBudgetCents: number) => void;
+  /** Candidates the last run held for the owner to pick by hand. */
+  holdCandidates: string[];
+  holdReason: string | null;
+  selectedIds: Set<string>;
+  onToggleSelect: (jobId: string) => void;
+  onPaySelected: () => void;
 }
 
 export default function ApprovalPanel(props: ApprovalPanelProps) {
   const { jobs, rows, caps, paying, payError, onApprove, onPay } = props;
+  const { runBudgetDollars, onRunBudgetChange, holdCandidates, holdReason, selectedIds, onToggleSelect, onPaySelected } = props;
   const perPaymentCap = caps?.per_payment_cap_cents ?? 20000;
   const weeklyCap = caps?.weekly_cap_cents ?? 150000;
 
@@ -83,6 +93,8 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
                 <span>
                   <strong>{row.job_id}</strong> — {row.freelancer} — {usd(row.amount_cents)} —{" "}
                   {statusLabel(row.status)}
+                  {row.due ? ` — due ${row.due}` : ""}
+                  {row.priority ? ` — ${row.priority} priority` : ""}
                   {row.reason ? ` — ${row.reason}` : ""}
                   {overPayment > 0 ? ` Over the per-payment cap by ${usd(overPayment)}.` : ""}
                   {overWeek > 0 ? ` Over the weekly cap by ${usd(overWeek)}.` : ""}
@@ -96,14 +108,62 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
         </ul>
       </div>
 
+      <label className="panel-line">
+        Run budget ($) — the most this run may pay. The model chooses which approved jobs fit it, soonest
+        due and highest priority first. It starts at the weekly cap left.
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={runBudgetDollars}
+          onChange={(e) => onRunBudgetChange(Number(e.target.value))}
+          disabled={paying}
+        />
+      </label>
+
       <button
         type="button"
         className="button button-primary"
-        onClick={onPay}
+        onClick={() => onPay(Math.round(runBudgetDollars * 100))}
         disabled={paying || payableRows.length === 0}
       >
         {paying ? "Paying…" : `Pay approved jobs (${payableRows.length})`}
       </button>
+      {holdCandidates.length > 0 && (
+        <div className="approve-list">
+          <h3>Pick the jobs to pay by hand</h3>
+          <p className="panel-line">{holdReason ?? "The run held for the owner to pick."}</p>
+          <ul>
+            {holdCandidates.map((jobId) => {
+              const row = rows.find((r) => r.job_id === jobId);
+              return (
+                <li key={jobId}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(jobId)}
+                      onChange={() => onToggleSelect(jobId)}
+                      disabled={paying}
+                    />{" "}
+                    {jobId}
+                    {row ? ` — ${row.freelancer} — ${usd(row.amount_cents)}` : ""}
+                    {row?.due ? ` — due ${row.due}` : ""}
+                    {row?.priority ? ` — ${row.priority} priority` : ""}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={onPaySelected}
+            disabled={paying || selectedIds.size === 0}
+          >
+            {paying ? "Paying…" : `Pay selected (${selectedIds.size})`}
+          </button>
+        </div>
+      )}
       <p className="panel-line">
         About to pay: {usd(payableTotalCents)}. Estimated fees {`$${payableFeeUsd.toFixed(2)}`}, freelancers
         receive about {`$${payableNetUsd.toFixed(2)}`}. Estimated from PayPal&apos;s published rates

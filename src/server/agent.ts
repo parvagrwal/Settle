@@ -1,13 +1,15 @@
-// Agent loop — the model proposes, the decision check disposes.
-// Every proposal goes through the decision check first. A proposal
-// that fails the check is written to the audit trail with its exact
-// label and never reaches Payouts. A proposal that passes the check
+// Agent loop — the model allocates, the decision check disposes.
+// Every chosen job goes through the decision check first. A chosen
+// job that fails the check is written to the audit trail with its exact
+// label and never reaches Payouts. A chosen job that passes the check
 // but does not match the approved job record — a different amount or
 // a different recipient than the studio approved — is also refused,
 // because the studio approved the job as recorded, not the proposal.
-// Only proposals that pass the check AND match the job record are
-// paid, through the existing payout wiring, which runs the decision
-// check a second time. Two checks, same rules, no shortcut.
+// A chosen job that does not fit the run budget is refused for this
+// run and stays waiting. Only chosen jobs that pass the check AND
+// match the job record AND fit the run budget are paid, through the
+// existing payout wiring, which runs the decision check a second time.
+// Two checks, same rules, no shortcut.
 // Sandbox only, test money, no real money moves.
 // Worst-case exposure: $1,500 per week, printed wherever a cap is shown.
 import { decide } from "./decide.ts";
@@ -68,6 +70,12 @@ export async function runAgentLoop(opts: {
   refreshToken?: () => Promise<string>;
   fetchFn?: FetchFn;
   poll?: boolean;
+  /** The owner's cap on this run only, in cents. A chosen job that
+      does not fit what is left of it is refused for this run. */
+  runBudgetCents?: number;
+  /** Jobs the model held for a later run, with reasons. Each gets a
+      held row on the audit trail, before any chosen job is checked. */
+  held?: Array<{ jobId: string; reason: string }>;
 }): Promise<AgentLoopResult> {
   const policy = opts.policy ?? DEFAULT_POLICY;
   const nowMs = opts.nowMs ?? Date.now();
@@ -76,6 +84,20 @@ export async function runAgentLoop(opts: {
   const accepted: Job[] = [];
   const rejected: RejectedProposal[] = [];
   let spent = opts.spentInWindowCents ?? 0;
+  let runSpent = 0;
+
+  for (const heldJob of opts.held ?? []) {
+    const held = opts.jobs.find((j) => j.job_id === heldJob.jobId) ?? null;
+    audit.write({
+      actor: "agent",
+      job_id: heldJob.jobId,
+      action: "held",
+      reason: heldJob.reason,
+      amount_cents: held?.amount_cents ?? 0,
+      payout_batch_id: null,
+      paypal_transaction_id: null,
+    });
+  }
 
   for (const proposal of proposals) {
     const job = opts.jobs.find((j) => j.job_id === proposal.jobId) ?? null;
@@ -91,6 +113,31 @@ export async function runAgentLoop(opts: {
         paypal_transaction_id: null,
       });
       rejected.push({ job: null, proposalJobId: proposal.jobId, label: "JobNotApproved", reason });
+      continue;
+    }
+
+    // The run budget is the owner's cap on this run only. A chosen job
+    // that does not fit what is left of it is refused for this run,
+    // and the job stays waiting for a later run with a bigger budget.
+    // The loop goes on to the next chosen job, which may still fit.
+    if (opts.runBudgetCents !== undefined && runSpent + proposal.amountCents > opts.runBudgetCents) {
+      const reason =
+        `RunBudgetExceeded: ${proposal.amountCents} cents does not fit the $${(opts.runBudgetCents / 100).toFixed(2)} run budget, ` +
+        `$${(runSpent / 100).toFixed(2)} already chosen this run`;
+      audit.write({
+        actor: "agent",
+        job_id: job.job_id,
+        action: "rejected",
+        reason,
+        amount_cents: proposal.amountCents,
+        payout_batch_id: null,
+        paypal_transaction_id: null,
+      });
+      job.decision_reason = reason;
+      // The job stays waiting: the budget is a property of this run,
+      // not of the job, so it can be paid in a later run.
+      job.status = "waiting";
+      rejected.push({ job, proposalJobId: proposal.jobId, label: "RunBudgetExceeded", reason });
       continue;
     }
 
@@ -142,9 +189,18 @@ export async function runAgentLoop(opts: {
       continue;
     }
 
-    audit.write(rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision }));
+    const acceptedRow = rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision });
+    audit.write(
+      proposal.reason
+        ? {
+            ...acceptedRow,
+            reason: `${acceptedRow.reason}. ${proposal.source === "owner" ? "Owner picked this job" : "Model chose this job"}: ${proposal.reason}`,
+          }
+        : acceptedRow,
+    );
     accepted.push(job);
     spent += job.amount_cents;
+    runSpent += job.amount_cents;
   }
 
   if (accepted.length === 0) {

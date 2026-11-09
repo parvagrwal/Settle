@@ -39,6 +39,12 @@ export default function App() {
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [lastPay, setLastPay] = useState<PayResult | null>(null);
+  /** Run budget in dollars, set by the owner. Null means the default:
+   * the weekly cap left, which the panel computes from live rows. */
+  const [runBudgetDollars, setRunBudgetDollars] = useState<number | null>(null);
+  const [holdCandidates, setHoldCandidates] = useState<string[]>([]);
+  const [holdReason, setHoldReason] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadAll = useCallback(async () => {
     const [gridRows, jobRows, auditRows, capsBody] = await Promise.all([
@@ -94,6 +100,7 @@ export default function App() {
     [rows],
   );
   const weeklyCapCents = caps?.weekly_cap_cents ?? 150000;
+  const budgetDollars = runBudgetDollars ?? (weeklyCapCents - totalPaidCents) / 100;
   const recentAudit = useMemo(() => [...audit].slice(-8).reverse(), [audit]);
 
   async function handleApprove(jobId: string) {
@@ -105,11 +112,49 @@ export default function App() {
     }
   }
 
-  async function handlePay() {
+  async function handlePay(runBudgetCents: number) {
     setPaying(true);
     setPayError(null);
     try {
-      const result = await payJobs();
+      const result = await payJobs({ runBudgetCents });
+      await refreshGrid();
+      if ((result.held_for_selection ?? []).length > 0) {
+        setHoldCandidates(result.held_for_selection ?? []);
+        setHoldReason(result.hold_reason);
+        setSelectedIds(new Set());
+      } else {
+        setHoldCandidates([]);
+        setHoldReason(null);
+        setLastPay(result);
+        setView("result");
+      }
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : "pay failed");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  function handleToggleSelect(jobId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  }
+
+  async function handlePaySelected() {
+    setPaying(true);
+    setPayError(null);
+    try {
+      const result = await payJobs({
+        runBudgetCents: Math.round(budgetDollars * 100),
+        selectedJobIds: [...selectedIds],
+      });
+      setHoldCandidates([]);
+      setHoldReason(null);
+      setSelectedIds(new Set());
       setLastPay(result);
       await refreshGrid();
       setView("result");
@@ -152,9 +197,10 @@ export default function App() {
             </p>
             <p>
               Settle fixes it in one flow. Meera approves the week&apos;s jobs in one click. The
-              agent proposes the payments, the rules check every one against the $200 per-payment
-              cap and the $1,500 weekly cap, and PayPal pays the ones that pass. One that is over
-              the cap waits for Meera, with the reason on screen.
+              agent chooses which approved jobs to pay now, under the run budget Meera sets, the
+              rules check every chosen job against the $200 per-payment cap and the $1,500 weekly
+              cap, and PayPal pays the ones that pass. One that is over the cap waits for Meera,
+              with the reason on screen.
             </p>
           </section>
 
@@ -220,7 +266,14 @@ export default function App() {
             paying={paying}
             payError={payError}
             onApprove={handleApprove}
+            runBudgetDollars={budgetDollars}
+            onRunBudgetChange={setRunBudgetDollars}
             onPay={handlePay}
+            holdCandidates={holdCandidates}
+            holdReason={holdReason}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onPaySelected={handlePaySelected}
           />
 
           <StudioDashboard rows={rows} />
@@ -270,9 +323,18 @@ export default function App() {
                   <strong>{lastPay.batch_status ?? "none"}</strong>.
                 </p>
                 <p>
-                  Proposed by: <strong>{lastPay.proposer === "model" ? "the model" : "rule-based"}</strong>
+                  Chosen by:{" "}
+                  <strong>
+                    {lastPay.proposer === "model"
+                      ? "the model"
+                      : lastPay.proposer === "owner"
+                        ? "the owner"
+                        : lastPay.proposer === "manual-hold"
+                          ? "held for the owner"
+                          : "rule-based"}
+                  </strong>
                   {lastPay.proposer_reason ? ` — ${lastPay.proposer_reason}` : ""}. The rules checked
-                  every proposal before any payment.
+                  every chosen job before any payment.
                 </p>
                 {lastPay.invoice_status !== undefined && lastPay.invoice_status !== null && (
                   <p>
@@ -295,6 +357,15 @@ export default function App() {
                   {lastPay.accepted.map((jobId) => (
                     <li key={jobId}>
                       {jobId} — {statusLabel("paid")}
+                    </li>
+                  ))}
+                </ul>
+                <h3>Held for a later run ({(lastPay.held ?? []).length})</h3>
+                {(lastPay.held ?? []).length === 0 && <p>Nothing was held for a later run.</p>}
+                <ul>
+                  {(lastPay.held ?? []).map((item) => (
+                    <li key={item.job_id}>
+                      {item.job_id} — {item.reason}
                     </li>
                   ))}
                 </ul>

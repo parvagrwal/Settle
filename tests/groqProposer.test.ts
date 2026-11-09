@@ -16,6 +16,8 @@ function demoJob(jobId: string): Job {
     paypal_email: "freelancer@example.com",
     amount_cents: 100,
     currency: "USD",
+    due: "2026-11-12",
+    priority: "high",
     approval_state: "approved",
     approved_at: Date.now(),
     status: "waiting",
@@ -25,9 +27,9 @@ function demoJob(jobId: string): Job {
   };
 }
 
-function groqReply(proposals: unknown): Record<string, unknown> {
+function groqReply(proposals: unknown, held: unknown = []): Record<string, unknown> {
   return {
-    choices: [{ message: { content: JSON.stringify({ proposals }) } }],
+    choices: [{ message: { content: JSON.stringify({ proposals, held }) } }],
   };
 }
 
@@ -44,19 +46,20 @@ function mockFetch(reply: unknown, status = 200) {
   return { fetchFn, seen };
 }
 
-test("groqPropose parses a good reply, proposals labelled model with reasons", async () => {
+test("groqPropose parses a good reply, chosen and held jobs with reasons", async () => {
   const jobs = [demoJob("job-1"), demoJob("job-2")];
   const { fetchFn, seen } = mockFetch(
-    groqReply([
-      { jobId: "job-1", recipient: "freelancer@example.com", amountCents: 100, reason: "Approved work, due now." },
-      { jobId: "job-2", recipient: "freelancer@example.com", amountCents: 100, reason: "Approved work, due now." },
-    ]),
+    groqReply(
+      [{ jobId: "job-1", recipient: "freelancer@example.com", amountCents: 100, reason: "Due first." }],
+      [{ jobId: "job-2", reason: "Does not fit the run budget." }],
+    ),
   );
-  const result = await groqPropose({ jobs, apiKey: "test-key", fetchFn });
-  assert.equal(result.proposals.length, 2);
+  const result = await groqPropose({ jobs, apiKey: "test-key", runBudgetCents: 100, fetchFn });
+  assert.equal(result.proposals.length, 1);
   assert.equal(result.proposals[0].jobId, "job-1");
   assert.equal(result.proposals[0].source, "model");
-  assert.equal(result.proposals[0].reason, "Approved work, due now.");
+  assert.equal(result.proposals[0].reason, "Due first.");
+  assert.deepEqual(result.held, [{ jobId: "job-2", reason: "Does not fit the run budget." }]);
   assert.equal(typeof result.ms, "number");
   const sent = JSON.parse(seen[0].body) as Record<string, unknown>;
   assert.equal(sent.model, GROQ_MODEL);
@@ -64,6 +67,28 @@ test("groqPropose parses a good reply, proposals labelled model with reasons", a
   const format = sent.response_format as Record<string, unknown>;
   assert.equal(format.type, "json_schema");
   assert.equal((format.json_schema as Record<string, unknown>).strict, true);
+  // The model sees the run budget and the due and priority of each job.
+  const messages = sent.messages as Array<{ role: string; content: string }>;
+  const user = messages.find((m) => m.role === "user")?.content ?? "";
+  assert.match(user, /Run budget for this run: 100 cents/);
+  assert.match(user, /"due": "2026-11-12"/);
+  assert.match(user, /"priority": "high"/);
+});
+
+// The budget total is enforced by the loop, not here: a reply whose
+// subset is over the run budget is accepted by the proposer and
+// trimmed by the loop, so the jobs that fit still pay.
+test("groqPropose accepts an over-budget subset, the loop trims it", async () => {
+  const jobs = [demoJob("job-1"), demoJob("job-2")];
+  const { fetchFn } = mockFetch(
+    groqReply([
+      { jobId: "job-1", recipient: "freelancer@example.com", amountCents: 100, reason: "Due first." },
+      { jobId: "job-2", recipient: "freelancer@example.com", amountCents: 100, reason: "Due second." },
+    ]),
+  );
+  const result = await groqPropose({ jobs, apiKey: "test-key", runBudgetCents: 100, fetchFn });
+  assert.equal(result.proposals.length, 2);
+  assert.deepEqual(result.held, []);
 });
 
 test("groqPropose refuses a reply naming an unknown job", async () => {
@@ -71,7 +96,7 @@ test("groqPropose refuses a reply naming an unknown job", async () => {
   const { fetchFn } = mockFetch(
     groqReply([{ jobId: "job-9", recipient: "freelancer@example.com", amountCents: 100, reason: "Invented." }]),
   );
-  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", fetchFn }), /unknown job/);
+  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", runBudgetCents: 200, fetchFn }), /unknown job/);
 });
 
 test("groqPropose refuses a reply with a non-integer amount", async () => {
@@ -79,13 +104,16 @@ test("groqPropose refuses a reply with a non-integer amount", async () => {
   const { fetchFn } = mockFetch(
     groqReply([{ jobId: "job-1", recipient: "freelancer@example.com", amountCents: "100", reason: "Wrong type." }]),
   );
-  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", fetchFn }), /bad recipient, amount, or reason/);
+  await assert.rejects(
+    groqPropose({ jobs, apiKey: "test-key", runBudgetCents: 200, fetchFn }),
+    /bad recipient, amount, or reason/,
+  );
 });
 
 test("groqPropose names a 429 instead of failing silently", async () => {
   const jobs = [demoJob("job-1")];
   const { fetchFn } = mockFetch({ error: { message: "rate limit" } }, 429);
-  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", fetchFn }), /429/);
+  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", runBudgetCents: 200, fetchFn }), /429/);
 });
 
 test("groqPropose refuses a reply that is not valid JSON", async () => {
@@ -95,7 +123,7 @@ test("groqPropose refuses a reply that is not valid JSON", async () => {
     status: 200,
     json: async () => ({ choices: [{ message: { content: "not json at all" } }] }),
   })) as unknown as typeof fetch;
-  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", fetchFn }), /not valid JSON/);
+  await assert.rejects(groqPropose({ jobs, apiKey: "test-key", runBudgetCents: 200, fetchFn }), /not valid JSON/);
 });
 
 test("groqModelLive finds the model id in the models list", async () => {

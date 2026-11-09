@@ -6,6 +6,8 @@ export interface GridRow {
   job_id: string;
   freelancer_id: string;
   amount_cents: number;
+  due: string | null;
+  priority: "high" | "normal" | "low" | null;
   status: string;
   reason: string | null;
   payout_batch_id: string | null;
@@ -17,6 +19,8 @@ export interface JobRow {
   paypal_email: string;
   amount_cents: number;
   currency: string;
+  due?: string | null;
+  priority?: "high" | "normal" | "low" | null;
   approval_state: "approved" | "not_approved" | "expired";
   approved_at: number | null;
   status: string;
@@ -52,6 +56,11 @@ export interface PayResult {
   batch_status: string | null;
   proposer: string;
   proposer_reason: string | null;
+  /** Jobs the model held for a later run, with reasons. */
+  held: Array<{ job_id: string; reason: string }>;
+  /** Candidates the run held for the owner to pick by hand. */
+  held_for_selection: string[];
+  hold_reason: string | null;
   /** Invoice for the same work, when the server sent one. Missing on an
    * old response, which shows nothing about invoicing. */
   invoice_id?: string | null;
@@ -66,6 +75,8 @@ export interface DashboardRow {
   freelancer: string;
   amount_cents: number;
   amount_usd: number;
+  due: string | null;
+  priority: "high" | "normal" | "low" | null;
   status: string;
   /** Plain-words status for the screen, never colour alone. */
   status_label: string;
@@ -83,6 +94,8 @@ export function toDashboardRow(row: GridRow): DashboardRow {
     freelancer: row.freelancer_id,
     amount_cents: row.amount_cents,
     amount_usd: amountUsd,
+    due: row.due ?? null,
+    priority: row.priority ?? null,
     status: row.status,
     status_label: statusLabel(row.status),
     reason: row.reason,
@@ -140,8 +153,15 @@ export async function approveJob(jobId: string): Promise<JobRow> {
   return body.job;
 }
 
-export async function payJobs(): Promise<PayResult> {
-  const res = await fetch("/api/pay", { method: "POST" });
+export async function payJobs(opts: { runBudgetCents?: number; selectedJobIds?: string[] } = {}): Promise<PayResult> {
+  const res = await fetch("/api/pay", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...(opts.runBudgetCents !== undefined ? { runBudgetCents: opts.runBudgetCents } : {}),
+      ...(opts.selectedJobIds !== undefined ? { selectedJobIds: opts.selectedJobIds } : {}),
+    }),
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `pay failed, HTTP ${res.status}`);
