@@ -1,0 +1,46 @@
+{
+  "batchId": "GB736QR4BZJUG",
+  "batchStatus": "SUCCESS",
+  "checkedAt": "2026-11-09T06:12:33.390Z",
+  "items": [
+    {
+      "payoutItemId": "AXJNLDWPYJ8RE",
+      "transactionId": "81755000HW4094515",
+      "jobId": "demo-waiting-1",
+      "receiverEmail": "sb-nxn4n45090184@personal.example.com",
+      "amountCents": 100,
+      "currency": "USD",
+      "status": "SUCCESS"
+    },
+    {
+      "payoutItemId": "8NWDJ4VJMKCG8",
+      "transactionId": "08U33551X7727825S",
+      "jobId": "demo-waiting-2",
+      "receiverEmail": "sb-nxn4n45090184@personal.example.com",
+      "amountCents": 100,
+      "currency": "USD",
+      "status": "SUCCESS"
+    },
+    {
+      "payoutItemId": "WMYRWCEGJSUN2",
+      "transactionId": "132110678P1907201",
+      "jobId": "demo-approve-1",
+      "receiverEmail": "sb-nxn4n45090184@personal.example.com",
+      "amountCents": 100,
+      "currency": "USD",
+      "status": "SUCCESS"
+    }
+  ],
+  "reporting": {
+    "totalItems": 70,
+    "matched": 3,
+    "matchedTransactionIds": [
+      "132110678P1907201",
+      "81755000HW4094515",
+      "08U33551X7727825S"
+    ],
+    "lagging": false
+  },
+  "ok": true,
+  "note": null
+}
