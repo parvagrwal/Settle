@@ -7,7 +7,7 @@
 
 The transcription proposer is no longer the only allocation capability. A new, separate decision path validates financial context, generates alternative integer-cent plans, lets an agent select only a supplied valid scenario, records rationale/uncertainty/change triggers, and exposes a delayed-receipt counterfactual in the default UI. AI absence produces no recommendation and no payment authorization.
 
-This is meaningful implementation progress, **not completion of the final acceptance standard**. The plan store is now connected to PayPal execution through an approved-plan runner that pays with the same Payouts path and marks a plan succeeded only when every item settles; approve, pay, and allocation writes now need the owner token, and approval and execution revalidate the plan against its stored context, including expiry. Live model comparison, browser proof, real-user validation and Indian production feasibility remain unresolved.
+This is meaningful implementation progress, **not completion of the final acceptance standard**. The plan store is now connected to PayPal execution through an approved-plan runner that pays with the same Payouts path and marks a plan succeeded only when every item settles; approve, pay, and allocation writes now need the owner token, and approval and execution revalidate the plan against its stored context, including expiry. Live model comparison ran on 2026-11-09 (a three-way tie, see below); browser proof ran 2 of 3 specs; real-user validation and Indian production feasibility remain unresolved.
 
 ## Executed evidence
 
@@ -22,17 +22,21 @@ This is meaningful implementation progress, **not completion of the final accept
 | Comparative harness | 4 passing with mock selector; does not prove model quality |
 | Owner token | 8 passing; 401 without a token, 401 with the wrong token, 503 when unset, 200 with the correct token, on approve, pay, and allocation writes |
 | Approved-plan execution | 4 passing with mocked PayPal; all settled, one failed item, PayPal unreachable, never-approved plan denied |
-| Live model experiment | **Blocked:** `BLOCKED_NO_GROQ_CREDENTIAL`; `evidence/allocation/comparison.json` |
+| Live model experiment | **Ran live 2026-11-09:** three-way tie at $130; `evidence/allocation/comparison.json` |
 
 The comparison entries labelled ai_assisted and agentic now run different paths: ai_assisted is one model selection over the generated scenarios, returned as-is even when it breaks a rule; agentic is the full loop, which validates the pick and, on a rule break, escalates and tries the next scenario, recommending only a plan that passes the validator. The counterfactual takes a caller-supplied one-condition mutation of the input context instead of a fixed demo context.
 | Frontend build | Passing; large-bundle warning remains |
-| Browser E2E | Still blocked before page launch by Chromium shared libraries |
+| Browser E2E | Runs now; 2 of 3 pass, chart spec fails (chart canvas never mounts) |
 | Real-user research | Not performed; `USER-RESEARCH.md` |
 | India production feasibility | Not established; `INDIA-FEASIBILITY.md` |
 
+### Live run 2026-11-09
+
+The live comparison ran on 2026-11-09 with real model calls (about 2 seconds each). All three systems tied on the demo context: the deterministic fallback, the model-assisted path, and the agent path each allocated $130 (brand-refresh $80 plus urgent-retouch $50), leaving mandatory studio-software $90 unfunded, and every plan passed validation. The run shows the model works live and gives accurate reasons, but it does not show the model beating the baseline; that claim stays unproven. With cleared funds $50 lower, the plan flipped from deadline-first to operational-stability, and the changed plan stayed valid, so the system responds to a funds change. The overdue-mandatory rule stayed silent in this run because studio-software is due Nov 12 and the run happened Nov 9, so it was not overdue. Browser E2E runs now, 2 of 3 specs pass; the chart spec fails because the chart canvas never mounts.
+
 ## Deterministic baseline finding from actual runner
 
-The illustrative scenario has $130 discretionary budget after reserve. Current deadline-first fallback fully funds `brand-refresh` ($80) and `urgent-retouch` ($50), leaving mandatory `studio-software` ($90) unfunded. Alternative scenarios make that trade-off visible; operational-stability protects the mandatory obligation. This shows a meaningful decision problem, but does **not** prove an LLM selects better until the live model evaluation runs.
+The illustrative scenario has $130 discretionary budget after reserve. Current deadline-first fallback fully funds `brand-refresh` ($80) and `urgent-retouch` ($50), leaving mandatory `studio-software` ($90) unfunded. Alternative scenarios make that trade-off visible; operational-stability protects the mandatory obligation. This shows a meaningful decision problem, but does **not** prove an LLM selects better: the live model evaluation ran on 2026-11-09 and all three systems tied.
 
 ## Improvement loops completed
 
@@ -41,7 +45,7 @@ The illustrative scenario has $130 discretionary budget after reserve. Current d
 - **Financial safety:** property tests caught per-payment caps accidentally creating unauthorized partial payments. Generator fixed; validator retained. Owner approval binds an exact SHA-256 plan hash.
 - **User experience:** obligations, alternatives, residuals, deferrals, uncertainties, tool trace and no-authorization state are visible. Approval/challenge UI is not yet connected.
 - **Engineering quality:** pure allocation functions are separated from orchestration, provider selector and durable control store. Legacy execution remains technical debt.
-- **Differentiation:** deterministic fallback can leave a later mandatory obligation unfunded; the agent's task is explicit contextual trade-off selection. No superiority claim without live comparison.
+- **Differentiation:** deterministic fallback can leave a later mandatory obligation unfunded; the agent's task is explicit contextual trade-off selection. No superiority claim: the live comparison on 2026-11-09 tied.
 
 ## Requirements-to-evidence matrix
 
@@ -53,13 +57,13 @@ The illustrative scenario has $130 discretionary budget after reserve. Current d
 | Context adaptation | delayed-receipt counterfactual | unit/API tests | Verified in fixtures |
 | No silent AI fallback | orchestrator/API | AI-disabled tests | Verified |
 | Durable decisions | `allocationStore.ts` | restart + immutable audit tests | Verified |
-| Owner approval/RBAC/stop | store methods | role/approval/stop tests | Store verified; HTTP auth pending |
-| Idempotent execution | plan execution record | duplicate-execution tests | Gate verified; PayPal not connected |
-| Agent selects valid scenario | `decisionEngine.ts`, Groq selector | mock contract tests | Live model pending |
-| AI beats baseline | evaluator + runner | credential-blocked output | **Unproven** |
-| Secure legacy payment API | none yet | diagnosis finds unauthenticated routes | **Unresolved** |
+| Owner approval/RBAC/stop | store methods + HTTP owner token | role/approval/stop tests + owner-auth tests | Store verified; HTTP owner token enforced on approve, pay, and allocation writes |
+| Idempotent execution | plan execution record + PayPal execution | duplicate-execution + plan-execution tests | Gate verified; PayPal connected, reconciled before succeeded |
+| Agent selects valid scenario | `decisionEngine.ts`, Groq selector | mock contract tests + live run 2026-11-09 | Live model ran 2026-11-09, three-way tie |
+| AI beats baseline | evaluator + runner | live run 2026-11-09, three-way tie | **Unproven** |
+| Secure legacy payment API | owner token required (`SETTLE_OWNER_TOKEN`) | owner-auth tests: 401 without token, 503 when unconfigured | **Resolved** |
 | Reconciliation-triggered re-plan | verified event store exists separately | no trigger integration | Pending |
-| Complete demo | planner UI | compile only; browser blocked | Pending |
+| Complete demo | planner UI | compile + browser E2E 2 of 3 (chart spec fails) | Pending |
 | Real problem evidence | research protocol | no participants | **Unvalidated** |
 | India deployment | provider/legal matrix | external docs only | **Not production-feasible as-is** |
 
@@ -84,5 +88,5 @@ The illustrative scenario has $130 discretionary budget after reserve. Current d
 2. Bind the approved plan to the PayPal batch idempotency key; reconcile unknown outcomes before any retry. Connect verified item failures to a new plan version.
 3. Add owner approve/challenge/reject UI and immutable version history. Never approve through model output.
 4. Supply real Groq credentials and run repeated live three-system scenarios, recording latency, selection consistency, factual explanation accuracy and failures.
-5. Repair the Chromium environment and execute Playwright approval/counterfactual/security flows; capture actual evidence.
+5. Fix the chart spec that fails (chart canvas never mounts) and re-run the Playwright approval/counterfactual/security flows; capture actual evidence.
 6. Conduct field research and provider/legal/tax/privacy review before production or Indian feasibility claims.

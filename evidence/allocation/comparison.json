@@ -1,27 +1,219 @@
 {
-  "status": "BLOCKED_NO_GROQ_CREDENTIAL",
-  "modelResultsClaimed": false,
-  "deterministicFallback": {
-    "planId": "demo-studio-v1:deadline-first",
-    "contextId": "demo-studio-v1",
-    "strategy": "deadline-first",
-    "allocations": [
-      {
-        "obligationId": "brand-refresh",
-        "amountCents": 8000,
-        "residualCents": 0
+  "status": "LIVE_MODEL_EVALUATION",
+  "methodology": "independent integer-cent validator; latency wall clock; explanation accuracy requires separate human review",
+  "systems": [
+    {
+      "system": "deterministic_fallback",
+      "plan": {
+        "planId": "demo-studio-v1:deadline-first",
+        "contextId": "demo-studio-v1",
+        "strategy": "deadline-first",
+        "allocations": [
+          {
+            "obligationId": "brand-refresh",
+            "amountCents": 8000,
+            "residualCents": 0
+          },
+          {
+            "obligationId": "urgent-retouch",
+            "amountCents": 5000,
+            "residualCents": 0
+          }
+        ],
+        "totalAllocatedCents": 13000,
+        "unfundedObligationIds": [
+          "studio-software"
+        ],
+        "rationale": "Protects the earliest deadlines first; later obligations remain explicitly unfunded."
       },
-      {
-        "obligationId": "urgent-retouch",
-        "amountCents": 5000,
-        "residualCents": 0
-      }
-    ],
-    "totalAllocatedCents": 13000,
-    "unfundedObligationIds": [
-      "studio-software"
-    ],
-    "rationale": "Protects the earliest deadlines first; later obligations remain explicitly unfunded."
-  },
-  "message": "No live AI-assisted or agentic comparison was run. Mock-selector unit tests verify the harness only."
+      "metrics": {
+        "allocationValid": true,
+        "obligationProtection": true,
+        "allocatedCents": 13000,
+        "mandatoryFundedCents": 0,
+        "urgentFundedCents": 5000,
+        "residualCents": 0,
+        "humanInterventions": 0,
+        "explanationAccuracy": null
+      },
+      "latencyMs": 0,
+      "reason": "Protects the earliest deadlines first; later obligations remain explicitly unfunded."
+    },
+    {
+      "system": "ai_assisted",
+      "plan": {
+        "planId": "demo-studio-v1:partial-coverage",
+        "contextId": "demo-studio-v1",
+        "strategy": "partial-coverage",
+        "allocations": [
+          {
+            "obligationId": "brand-refresh",
+            "amountCents": 8000,
+            "residualCents": 0
+          },
+          {
+            "obligationId": "urgent-retouch",
+            "amountCents": 5000,
+            "residualCents": 0
+          }
+        ],
+        "totalAllocatedCents": 13000,
+        "unfundedObligationIds": [
+          "studio-software"
+        ],
+        "rationale": "Uses permitted partial schedules to broaden coverage while preserving every residual entitlement."
+      },
+      "metrics": {
+        "allocationValid": true,
+        "obligationProtection": true,
+        "allocatedCents": 13000,
+        "mandatoryFundedCents": 0,
+        "urgentFundedCents": 5000,
+        "residualCents": 0,
+        "humanInterventions": 0,
+        "explanationAccuracy": null
+      },
+      "latencyMs": 1966,
+      "reason": "Allocates full amounts to brand-refresh and urgent-retouch, respecting deadlines and using the full 13,000 cents cap, but cannot fund the mandatory studio-software obligation due to insufficient cleared funds."
+    },
+    {
+      "system": "agentic",
+      "plan": {
+        "planId": "demo-studio-v1:deadline-first",
+        "contextId": "demo-studio-v1",
+        "strategy": "deadline-first",
+        "allocations": [
+          {
+            "obligationId": "brand-refresh",
+            "amountCents": 8000,
+            "residualCents": 0
+          },
+          {
+            "obligationId": "urgent-retouch",
+            "amountCents": 5000,
+            "residualCents": 0
+          }
+        ],
+        "totalAllocatedCents": 13000,
+        "unfundedObligationIds": [
+          "studio-software"
+        ],
+        "rationale": "Protects the earliest deadlines first; later obligations remain explicitly unfunded."
+      },
+      "metrics": {
+        "allocationValid": true,
+        "obligationProtection": true,
+        "allocatedCents": 13000,
+        "mandatoryFundedCents": 0,
+        "urgentFundedCents": 5000,
+        "residualCents": 0,
+        "humanInterventions": 0,
+        "explanationAccuracy": null
+      },
+      "latencyMs": 2128,
+      "reason": "Allocates to brand-refresh (obligationId: brand-refresh) and urgent-retouch (obligationId: urgent-retouch) covering the earliest deadlines, but cannot fund mandatory studio-software due to totalCap constraint."
+    }
+  ],
+  "counterfactual": {
+    "originalContext": {
+      "contextId": "demo-studio-v1",
+      "capturedAt": "2026-11-09T13:59:56.336Z",
+      "validUntil": "2026-11-09T14:59:56.336Z",
+      "clearedFundsCents": 15000,
+      "reserveCents": 2000,
+      "perPaymentCapCents": 20000,
+      "totalCapCents": 13000,
+      "committedCents": 0,
+      "obligations": [
+        {
+          "obligationId": "brand-refresh",
+          "recipient": "sandbox-designer@example.test",
+          "currency": "USD",
+          "owedCents": 8000,
+          "settledCents": 0,
+          "dueAt": "2026-11-10T12:00:00Z",
+          "mandatory": false,
+          "partialAllowed": true,
+          "priority": "normal",
+          "note": "Client delivery is complete; scheduling is discretionary."
+        },
+        {
+          "obligationId": "studio-software",
+          "recipient": "sandbox-vendor@example.test",
+          "currency": "USD",
+          "owedCents": 9000,
+          "settledCents": 0,
+          "dueAt": "2026-11-12T12:00:00Z",
+          "mandatory": true,
+          "partialAllowed": false,
+          "priority": "operational",
+          "note": "Required to keep the studio operating."
+        },
+        {
+          "obligationId": "urgent-retouch",
+          "recipient": "sandbox-artist@example.test",
+          "currency": "USD",
+          "owedCents": 5000,
+          "settledCents": 0,
+          "dueAt": "2026-11-11T12:00:00Z",
+          "mandatory": false,
+          "partialAllowed": false,
+          "priority": "urgent",
+          "note": "Owner marked urgent; no contract change."
+        }
+      ]
+    },
+    "modifiedContext": {
+      "contextId": "demo-studio-v1-delayed-receipt",
+      "capturedAt": "2026-11-09T13:59:56.336Z",
+      "validUntil": "2026-11-09T14:59:56.336Z",
+      "clearedFundsCents": 10000,
+      "reserveCents": 2000,
+      "perPaymentCapCents": 20000,
+      "totalCapCents": 13000,
+      "committedCents": 0,
+      "obligations": [
+        {
+          "obligationId": "brand-refresh",
+          "recipient": "sandbox-designer@example.test",
+          "currency": "USD",
+          "owedCents": 8000,
+          "settledCents": 0,
+          "dueAt": "2026-11-10T12:00:00Z",
+          "mandatory": false,
+          "partialAllowed": true,
+          "priority": "normal",
+          "note": "Client delivery is complete; scheduling is discretionary."
+        },
+        {
+          "obligationId": "studio-software",
+          "recipient": "sandbox-vendor@example.test",
+          "currency": "USD",
+          "owedCents": 9000,
+          "settledCents": 0,
+          "dueAt": "2026-11-12T12:00:00Z",
+          "mandatory": true,
+          "partialAllowed": false,
+          "priority": "operational",
+          "note": "Required to keep the studio operating."
+        },
+        {
+          "obligationId": "urgent-retouch",
+          "recipient": "sandbox-artist@example.test",
+          "currency": "USD",
+          "owedCents": 5000,
+          "settledCents": 0,
+          "dueAt": "2026-11-11T12:00:00Z",
+          "mandatory": false,
+          "partialAllowed": false,
+          "priority": "urgent",
+          "note": "Owner marked urgent; no contract change."
+        }
+      ]
+    },
+    "originalPlanId": "demo-studio-v1:deadline-first",
+    "newPlanId": "demo-studio-v1-delayed-receipt:operational-stability",
+    "reason": "The operational‑stability plan allocates the urgent‑retouch obligation (obligationId: urgent‑retouch) which has the highest priority and an earlier due date than the mandatory studio‑software obligation. Given the limited cleared funds (10,000 cents) and the fact that studio‑software cannot be partially paid, this plan ensures the most urgent work is funded while acknowledging that the mandatory obligation remains unfunded due to insufficient funds.",
+    "constraintValid": true
+  }
 }
