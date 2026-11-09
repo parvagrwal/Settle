@@ -9,7 +9,7 @@
 // .env, the dashboard still loads with the seed jobs, and paying returns
 // a clear "not configured" answer instead of failing. No PayPal secret
 // reaches the browser, ever. Sandbox only, test money, no real money moves.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadConfig, type SettleConfig } from "./config.ts";
@@ -18,6 +18,7 @@ import { createSettleServer } from "./routes.ts";
 import { seedJobs } from "./seed.ts";
 import { TransactionStore } from "./transactionStore.ts";
 import { AllocationStore } from "./allocationStore.ts";
+import { FinancialStore } from "./financialStore.ts";
 
 function loadEnv(path = ".env"): void {
   try {
@@ -65,8 +66,11 @@ const receiverEmail = config?.receiverEmail ?? "sandbox-receiver@example.com";
 const clientEmailRaw = (process.env.PAYPAL_SANDBOX_CLIENT_EMAIL ?? "").trim();
 const clientEmail = clientEmailRaw === "" ? undefined : clientEmailRaw;
 const jobs = seedJobs(receiverEmail);
-const transactionStore = new TransactionStore(process.env.SETTLE_DB_PATH ?? "data/settle.db");
-const allocationStore = new AllocationStore(process.env.SETTLE_DB_PATH ?? "data/settle.db");
+const dbPath = process.env.SETTLE_DB_PATH ?? "data/settle.db";
+if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
+const transactionStore = new TransactionStore(dbPath);
+const allocationStore = new AllocationStore(dbPath);
+const financialStore = new FinancialStore(dbPath);
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "app", "dist");
 const distReady = existsSync(join(appDir, "index.html"));
 if (!distReady) {
@@ -84,6 +88,7 @@ const app = createSettleServer({
   clientEmail,
   transactionStore,
   allocationStore,
+  financialStore,
   webhookId: process.env.PAYPAL_WEBHOOK_ID,
   staticDir: distReady ? appDir : undefined,
 });
@@ -99,3 +104,15 @@ console.log(
   `Invoicing is ${clientEmail !== undefined ? "on (client email set in local .env)" : "off (no client email in local .env, payouts still work)"}.`,
 );
 console.log("Sandbox only. Test money, no real money moves.");
+
+let closing = false;
+async function shutdown(): Promise<void> {
+  if (closing) return;
+  closing = true;
+  await app.close();
+  transactionStore.close();
+  allocationStore.close();
+  financialStore.close();
+}
+process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
+process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });

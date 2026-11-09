@@ -14,6 +14,7 @@ import {
   fetchJobs,
   ownerToken,
   payJobs,
+  reconcileFinancial,
   setOwnerToken,
   toDashboardRow,
   type AuditRow,
@@ -26,6 +27,7 @@ import { usd } from "./fees.ts";
 import { statusLabel } from "./status.ts";
 import { sampleRows, sampleResult } from "./data/sample.ts";
 import StudioDashboard from "./StudioDashboard.tsx";
+import FinancialControls from "./FinancialControls.tsx";
 import ApprovalPanel from "./ApprovalPanel.tsx";
 import TransactionsDashboard from "./TransactionsDashboard.tsx";
 import AllocationPlanner from "./AllocationPlanner.tsx";
@@ -42,6 +44,8 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const [reconcileNotice, setReconcileNotice] = useState<string | null>(null);
   const [lastPay, setLastPay] = useState<PayResult | null>(null);
   /** Run budget in dollars, set by the owner. Null means the default:
    * the weekly cap left, which the panel computes from live rows. */
@@ -82,10 +86,16 @@ export default function App() {
   }, []);
 
   const refreshGrid = useCallback(async () => {
-    const [gridRows, jobRows, auditRows] = await Promise.all([fetchGrid(), fetchJobs(), fetchAudit()]);
+    const [gridRows, jobRows, auditRows, capsBody] = await Promise.all([
+      fetchGrid(),
+      fetchJobs(),
+      fetchAudit(),
+      fetchCaps(),
+    ]);
     setRows(gridRows.map(toDashboardRow));
     setJobs(jobRows);
     setAudit(auditRows);
+    setCaps(capsBody);
   }, []);
 
   useEffect(() => {
@@ -119,9 +129,31 @@ export default function App() {
     () => rows.filter((row) => row.status === "waiting" || row.status === "waiting_for_meera").length,
     [rows],
   );
-  const weeklyCapCents = caps?.weekly_cap_cents ?? 150000;
-  const budgetDollars = runBudgetDollars ?? (weeklyCapCents - totalPaidCents) / 100;
+  const weeklyCapCents = caps?.rolling_cap_cents ?? caps?.weekly_cap_cents ?? 150000;
+  const remainingCapCents = caps?.remainingCents ?? Math.max(0, weeklyCapCents - totalPaidCents);
+  const budgetDollars = runBudgetDollars ?? remainingCapCents / 100;
   const recentAudit = useMemo(() => [...audit].slice(-8).reverse(), [audit]);
+
+  async function handleReconcile() {
+    setPaying(true);
+    setReconcileError(null);
+    setReconcileNotice(null);
+    try {
+      await reconcileFinancial();
+      await refreshGrid();
+      setReconcileNotice("Provider reconciliation complete. Durable cap, grid and paid status are refreshed.");
+      if (lastPay?.outcomeUnknown) {
+        // The ambiguous result is not payment proof. Remove it so the owner
+        // does not return to a stale "unknown" screen after recovery.
+        setLastPay(null);
+        setView("dashboard");
+      }
+    } catch (err) {
+      setReconcileError(err instanceof Error ? err.message : "reconcile failed");
+    } finally {
+      setPaying(false);
+    }
+  }
 
   async function handleApprove(jobId: string) {
     try {
@@ -135,10 +167,12 @@ export default function App() {
   async function handlePay(runBudgetCents: number) {
     setPaying(true);
     setPayError(null);
+    setReconcileError(null);
+    setReconcileNotice(null);
     try {
       const result = await payJobs({ runBudgetCents });
       await refreshGrid();
-      if ((result.held_for_selection ?? []).length > 0) {
+      if (!result.outcomeUnknown && (result.held_for_selection ?? []).length > 0) {
         setHoldCandidates(result.held_for_selection ?? []);
         setHoldReason(result.hold_reason);
         setSelectedIds(new Set());
@@ -167,6 +201,8 @@ export default function App() {
   async function handlePaySelected() {
     setPaying(true);
     setPayError(null);
+    setReconcileError(null);
+    setReconcileNotice(null);
     try {
       const result = await payJobs({
         runBudgetCents: Math.round(budgetDollars * 100),
@@ -206,8 +242,8 @@ export default function App() {
           <button onClick={() => setView("dashboard")}>Legacy payout workflow</button>
         </nav>
         <p>
-          Sender: US sandbox test account, not a real Indian studio. Worst-case exposure: $1,500 per
-          week.
+          Sender: US sandbox test account, not a real Indian studio.{" "}
+          {caps?.worst_case_exposure ?? "Worst-case configured exposure: $1500.00 per rolling 168 hours."}
         </p>
         <p className="panel-line">
           Owner token:{" "}
@@ -298,6 +334,12 @@ export default function App() {
             </p>
           )}
 
+          {reconcileNotice !== null && (
+            <p className="panel-line" role="status">
+              {reconcileNotice}
+            </p>
+          )}
+
           <section className="kpis" aria-label="Totals">
             <div className="kpi">
               <div className="kpi-value">{usd(totalPaidCents)}</div>
@@ -312,10 +354,16 @@ export default function App() {
               <div className="kpi-label">Jobs waiting</div>
             </div>
             <div className="kpi">
-              <div className="kpi-value">{usd(weeklyCapCents - totalPaidCents)}</div>
-              <div className="kpi-label">Weekly cap left</div>
+              <div className="kpi-value">{usd(remainingCapCents)}</div>
+              <div className="kpi-label">Rolling cap left</div>
             </div>
           </section>
+
+          <FinancialControls
+            caps={caps}
+            ownerTokenSet={ownerTokenSet}
+            onRefresh={refreshGrid}
+          />
 
           <ApprovalPanel
             jobs={jobs}
@@ -380,6 +428,26 @@ export default function App() {
             )}
             {lastPay !== null && (
               <>
+                {lastPay.outcomeUnknown && (
+                  <div className="error-text" role="alert">
+                    <p>
+                      <strong>Payment outcome unknown — do not retry blindly.</strong> PayPal may
+                      have accepted this submission. The durable reservation still counts against
+                      the rolling cap; only provider reconciliation can decide whether it paid.
+                    </p>
+                    <p>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={handleReconcile}
+                        disabled={paying || !ownerTokenSet}
+                      >
+                        {paying ? "Reconciling…" : "Reconcile with PayPal"}
+                      </button>
+                    </p>
+                    {reconcileError !== null && <p>Reconcile failed: {reconcileError}</p>}
+                  </div>
+                )}
                 <p>
                   Batch: <strong>{lastPay.payout_batch_id ?? "none"}</strong> — status{" "}
                   <strong>{lastPay.batch_status ?? "none"}</strong>.
@@ -413,8 +481,14 @@ export default function App() {
                     )}
                   </p>
                 )}
-                <h3>Paid ({lastPay.accepted.length})</h3>
-                {lastPay.accepted.length === 0 && <p>No payments went out.</p>}
+                <h3>{lastPay.outcomeUnknown ? "Confirmed paid" : "Paid"} ({lastPay.accepted.length})</h3>
+                {lastPay.accepted.length === 0 && (
+                  <p>
+                    {lastPay.outcomeUnknown
+                      ? "No payment is confirmed by this response. The provider outcome is unresolved."
+                      : "No payments went out."}
+                  </p>
+                )}
                 <ul>
                   {lastPay.accepted.map((jobId) => (
                     <li key={jobId}>

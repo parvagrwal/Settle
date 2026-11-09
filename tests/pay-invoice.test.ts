@@ -61,6 +61,7 @@ interface PayResponse {
 function makePayPalMock(opts: { batchStatus?: string; invoiceFails?: boolean } = {}) {
   const calls: Array<{ url: string; init: Record<string, unknown> }> = [];
   let invoiceGetCount = 0;
+  let payoutItem: Record<string, unknown> | null = null;
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     calls.push({ url, init });
     const method = (init.method as string) ?? "GET";
@@ -83,11 +84,12 @@ function makePayPalMock(opts: { batchStatus?: string; invoiceFails?: boolean } =
     }
     if (url.includes("/v1/payments/payouts")) {
       if (method === "POST") {
+        const body = JSON.parse(String(init.body)); const source = body.items[0];
+        payoutItem = { payout_item_id: `ITEM-${source.sender_item_id}`, transaction_id: `TX-${source.sender_item_id}`, activity_id: `ACT-${source.sender_item_id}`, sender_item_id: source.sender_item_id, transaction_status: opts.batchStatus === "DENIED" ? "FAILED" : "SUCCESS", receiver: source.receiver, payout_item: { amount: source.amount }, time_processed: new Date().toISOString() };
         return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-INV", batch_status: "PENDING" } });
       }
-      return mockResponse(200, {
-        batch_header: { payout_batch_id: "BATCH-INV", batch_status: opts.batchStatus ?? "SUCCESS" },
-      });
+      if (url.includes("?")) return mockResponse(200, { items: [], total_items: 0 });
+      return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-INV", batch_status: opts.batchStatus ?? "SUCCESS" }, items: payoutItem ? [payoutItem] : [] });
     }
     if (url.includes("/v2/invoicing/invoices")) {
       if (opts.invoiceFails && method === "POST" && !url.endsWith("/send")) {

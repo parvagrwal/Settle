@@ -166,3 +166,34 @@ not ok 1 - tests/investigation.test.ts
 # todo 0
 # duration_ms 117.731678
 ```
+
+## Financial core extracted from patch 3, rebased onto dc72c98 — verified by extraction run, 2026-11-09
+
+Patch 3 (base 4a384d2) was analysed, not applied. Only its financial core was
+taken: the durable SQLite ledger, provider-confirmed rolling cap, reservations,
+outcome_unknown recovery, and owner-versioned policy. The three files the patch
+would have regressed (README, AGENTIC-IMPLEMENTATION.md, comparison.json) were
+excluded; comparison.json keeps the live model result from dc72c98.
+
+Strict type check initially failed with 9 errors the author's arena branch did
+not catch (its build only type-checked the dashboard): the audit correlation
+parameter was inferred as a UUID template type, one untyped row field reached
+a SQL call, the active policy missed the required windowMs field, and two
+assignments wrote a transaction ID onto a job type that has no such field
+(the grid never reads it; the ID already lives in the ledger and the audit
+rows). All six fixes are minimal type corrections; no behaviour changed.
+After the fixes: strict type check exit 0.
+
+```text
+# Node.js v24.22.1
+# Full suite: node --test tests/*.test.ts
+# tests 194
+# pass 194
+# fail 0
+# Dashboard build: cd app && npm run build, exit 0, built in 3.43s
+# Evidence regenerated from these runs, not carried over from the patch:
+# evidence/engineering/financial-store.tap (11/11),
+# financial-payments.tap (3/3), financial-http-adversarial.tap (7/7),
+# plan-execution.tap (4/4), full-regression.tap (194/194),
+# frontend-build.txt
+```

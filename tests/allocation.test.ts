@@ -111,6 +111,7 @@ function makeMock(opts: { groqHandler?: GroqHandler; batchStatus?: string } = {}
   const calls: Array<{ url: string; init: Record<string, unknown> }> = [];
   const groqBodies: Array<Record<string, unknown>> = [];
   let invoiceGetCount = 0;
+  const payoutItems = new Map<string, Record<string, unknown>>();
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     calls.push({ url, init });
     const method = (init.method as string) ?? "GET";
@@ -123,11 +124,14 @@ function makeMock(opts: { groqHandler?: GroqHandler; batchStatus?: string } = {}
     }
     if (url.includes("/v1/payments/payouts")) {
       if (method === "POST") {
-        return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-ALLOC", batch_status: "PENDING" } });
+        const body = JSON.parse(String(init.body)); const source = body.items[0]; const id = source.sender_item_id.replace("settle-payment-", "");
+        const batchId = "BATCH-ALLOC";
+        payoutItems.set(batchId, { payout_item_id: `ITEM-${id}`, transaction_id: `TX-${id}`, activity_id: `ACT-${id}`, sender_item_id: source.sender_item_id, transaction_status: opts.batchStatus === "DENIED" ? "FAILED" : "SUCCESS", receiver: source.receiver, payout_item: { amount: source.amount }, time_processed: new Date().toISOString() });
+        return mockResponse(201, { batch_header: { payout_batch_id: batchId, batch_status: "PENDING" } });
       }
-      return mockResponse(200, {
-        batch_header: { payout_batch_id: "BATCH-ALLOC", batch_status: opts.batchStatus ?? "SUCCESS" },
-      });
+      if (url.includes("?")) return mockResponse(200, { items: [], total_items: 0 });
+      const batchId = url.split("/").pop()!;
+      return mockResponse(200, { batch_header: { payout_batch_id: batchId, batch_status: opts.batchStatus ?? "SUCCESS" }, items: [payoutItems.get(batchId)] });
     }
     if (url.includes("/v2/invoicing/invoices")) {
       if (method === "POST" && url.endsWith("/send")) {
@@ -146,7 +150,7 @@ function makeMock(opts: { groqHandler?: GroqHandler; batchStatus?: string } = {}
     fetchFn,
     calls,
     groqBodies,
-    payoutCalls: () => calls.filter((call) => call.url.includes("/v1/payments/payouts")),
+    payoutCalls: () => calls.filter((call) => call.url.endsWith("/v1/payments/payouts") && ((call.init.method as string) ?? "GET") === "POST"),
     invoicingCalls: () => calls.filter((call) => call.url.includes("/v2/invoicing/")),
   };
 }
@@ -463,7 +467,7 @@ test("owner-picked Pay Selected pays only the picked jobs", async () => {
     assert.equal(paid.data.proposer, "owner");
     assert.equal(paid.data.batch_status, "SUCCESS");
     assert.equal(paid.data.invoice_total_cents, 100);
-    assert.equal(mock.payoutCalls().length, 2);
+    assert.equal(mock.payoutCalls().length, 1);
 
     // The job the owner did not pick is still waiting, unpaid.
     const gridRes = await fetch(`http://127.0.0.1:${port}/api/grid`);
@@ -541,7 +545,7 @@ test("owner picking the over-cap job is refused under the per-payment cap, never
     const refused = paid.data.rejected.find((r) => r.job_id === "demo-over-cap");
     assert.ok(refused, "over-cap job was not refused");
     assert.equal(refused.label, "PerRequestCapExceeded");
-    assert.equal(mock.payoutCalls().length, 2);
+    assert.equal(mock.payoutCalls().length, 1);
   } finally {
     await app.close();
   }

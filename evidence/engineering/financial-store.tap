@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: owner settings, recipient verification, approval and complete payment identity survive restart
+ok 1 - owner settings, recipient verification, approval and complete payment identity survive restart
+  ---
+  duration_ms: 8.546987
+  type: 'test'
+  ...
+# Subtest: client cannot substitute recipient or exceed owner per-payment cap
+ok 2 - client cannot substitute recipient or exceed owner per-payment cap
+  ---
+  duration_ms: 2.976046
+  type: 'test'
+  ...
+# Subtest: replay returns original reservation and concurrent reservations cannot exceed cap
+ok 3 - replay returns original reservation and concurrent reservations cannot exceed cap
+  ---
+  duration_ms: 4.236948
+  type: 'test'
+  ...
+# Subtest: rolling cap uses provider timestamps and excludes old, pending and failed items
+ok 4 - rolling cap uses provider timestamps and excludes old, pending and failed items
+  ---
+  duration_ms: 3.269496
+  type: 'test'
+  ...
+# Subtest: returned and reversed payments are separate adjustments, not deleted history
+ok 5 - returned and reversed payments are separate adjustments, not deleted history
+  ---
+  duration_ms: 2.30548
+  type: 'test'
+  ...
+# Subtest: stale reconciliation fails closed and exposes last successful reconciliation
+ok 6 - stale reconciliation fails closed and exposes last successful reconciliation
+  ---
+  duration_ms: 2.784239
+  type: 'test'
+  ...
+# Subtest: ambiguous submission is outcome_unknown and recovery reuses identity without another submission
+ok 7 - ambiguous submission is outcome_unknown and recovery reuses identity without another submission
+  ---
+  duration_ms: 4.0911
+  type: 'test'
+  ...
+# Subtest: mixed provider items preserve every identifier and never collapse batch outcomes
+ok 8 - mixed provider items preserve every identifier and never collapse batch outcomes
+  ---
+  duration_ms: 3.205751
+  type: 'test'
+  ...
+# Subtest: provider mismatch persists one discrepancy outside the rejected item transaction
+ok 9 - provider mismatch persists one discrepancy outside the rejected item transaction
+  ---
+  duration_ms: 4.113353
+  type: 'test'
+  ...
+# Subtest: reconciliation discrepancies are idempotent, durable and audit is immutable
+ok 10 - reconciliation discrepancies are idempotent, durable and audit is immutable
+  ---
+  duration_ms: 3.714734
+  type: 'test'
+  ...
+# Subtest: invoice evidence is distinct from payment evidence and preserves raw provider object
+ok 11 - invoice evidence is distinct from payment evidence and preserves raw provider object
+  ---
+  duration_ms: 3.509848
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 301.492812

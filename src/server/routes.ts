@@ -26,6 +26,9 @@ import { orchestrateAllocation } from "./decisionEngine.ts";
 import { groqScenarioSelector } from "./groqScenarioSelector.ts";
 import { requireOwner } from "./ownerAuth.ts";
 import { executeApprovedPlan } from "./planExecution.ts";
+import { FinancialStore } from "./financialStore.ts";
+import { reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { createHash } from "node:crypto";
 
 export interface GridRow {
   job_id: string;
@@ -154,6 +157,8 @@ export function createSettleServer(opts: {
   webhookId?: string;
   /** Durable agent recommendations, approvals and execution controls. */
   allocationStore?: AllocationStore;
+  /** Durable internal authorization, reservations and provider identity. */
+  financialStore?: FinancialStore;
 }): SettleServer {
   const store: SettleStore = {
     jobs: opts.jobs,
@@ -162,6 +167,57 @@ export function createSettleServer(opts: {
     invoicedJobIds: new Set<string>(),
   };
   const policy = opts.policy;
+  const financial = opts.financialStore ?? new FinancialStore(":memory:");
+  const recipientId = (email: string) => `recipient-${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
+  if (policy && (!opts.financialStore || financial.getPolicy().version === 1)) {
+    financial.updatePolicy({ capCents: policy.weeklyCapCents, perPaymentCapCents: policy.perPaymentCapCents, freshnessSeconds: 300, actor: { actorId: "configured-policy", role: "owner" }, at: new Date().toISOString() });
+  }
+  const activePolicy = (): Policy => {
+    const current = financial.getPolicy();
+    return {
+      perPaymentCapCents: current.perPaymentCapCents,
+      weeklyCapCents: current.capCents,
+      windowMs: DEFAULT_POLICY.windowMs,
+      approvalExpiryMs: policy?.approvalExpiryMs ?? DEFAULT_POLICY.approvalExpiryMs,
+    };
+  };
+  const syncLegacyFromFinancial = (): void => {
+    for (const verified of financial.listRecipients()) store.allowlistedEmails.add(verified.email);
+    for (const jobId of financial.listInvoicedJobIds()) store.invoicedJobIds.add(jobId);
+    for (const job of store.jobs) {
+      const payment = financial.getPaymentByJob(job.job_id);
+      if (!payment) continue;
+      job.paypal_email = payment.recipientEmail;
+      job.approval_state = "approved";
+      if (job.approved_at === null) job.approved_at = Date.parse(payment.approvedAt);
+      if (payment.status === "provider_confirmed") {
+        const item = financial.getPayoutItem(payment.paymentId);
+        job.status = "paid";
+        job.payout_batch_id = (item?.payoutBatchId as string | undefined) ?? job.payout_batch_id;
+        job.decision_reason = null;
+      } else if (payment.status === "outcome_unknown" || payment.status === "submitted" || payment.status === "reserved") {
+        job.status = "blocked";
+        job.decision_reason = "OutcomeUnknown: reconcile provider state before retrying";
+      } else if (payment.status === "failed") {
+        job.status = "failed";
+        job.decision_reason = "Provider item FAILED: no payment confirmed";
+      } else if (["pending", "unclaimed", "onhold", "blocked", "returned", "reversed", "refunded"].includes(payment.status)) {
+        job.status = "blocked";
+        job.decision_reason = `Provider item ${payment.status.toUpperCase()}: reconcile provider state before retrying`;
+      } else if (payment.status === "approved" && job.status === "blocked") {
+        job.status = "waiting";
+        job.decision_reason = null;
+      }
+    }
+  };
+  syncLegacyFromFinancial();
+  // Migrate already owner-approved jobs once; unpaid demos are authorization
+  // records, never provider payment evidence.
+  for (const job of store.jobs.filter((row) => row.approval_state === "approved" && row.status !== "paid" && row.amount_cents <= financial.getPolicy().perPaymentCapCents)) {
+    const id = recipientId(job.paypal_email);
+    if (!financial.getRecipient(id)) financial.verifyRecipient({ recipientId: id, email: job.paypal_email, actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
+    if (!financial.getPaymentByJob(job.job_id)) financial.approvePayment({ jobId: job.job_id, recipientId: id, amountCents: job.amount_cents, currency: "USD", actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
+  }
 
   const server = createServer(async (req, res) => {
     try {
@@ -182,15 +238,47 @@ export function createSettleServer(opts: {
         return;
       }
       if (req.method === "GET" && path === "/api/caps") {
-        const caps = policy ?? DEFAULT_POLICY;
+        const caps = financial.getPolicy();
+        const summary = financial.getCapSummary(new Date().toISOString());
         sendJson(res, 200, {
           per_payment_cap_cents: caps.perPaymentCapCents,
-          weekly_cap_cents: caps.weeklyCapCents,
+          weekly_cap_cents: caps.capCents,
+          rolling_cap_cents: caps.capCents,
+          window_hours: 168,
           window_days: 7,
           approval_expiry_days: 7,
-          worst_case_exposure: "Worst-case exposure: $1,500 per week.",
+          policy_version: caps.version,
+          freshness_seconds: caps.freshnessSeconds,
+          ...summary,
+          worst_case_exposure: `Worst-case configured exposure: $${(caps.capCents / 100).toFixed(2)} per rolling 168 hours.`,
         });
         return;
+      }
+      if (req.method === "PUT" && path === "/api/financial/policy") {
+        const owner = requireOwner(req);
+        if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        const body = await readJsonBody(req);
+        const capCents = body.capCents; const perPaymentCapCents = body.perPaymentCapCents; const freshnessSeconds = body.freshnessSeconds;
+        const valid = Number.isSafeInteger(capCents) && Number(capCents) >= 0
+          && Number.isSafeInteger(perPaymentCapCents) && Number(perPaymentCapCents) > 0
+          && Number.isSafeInteger(freshnessSeconds) && Number(freshnessSeconds) > 0
+          && Number(perPaymentCapCents) <= Number(capCents);
+        if (!valid) { sendJson(res, 400, { error: "capCents must be a non-negative integer, perPaymentCapCents and freshnessSeconds positive integers, and perPaymentCapCents <= capCents" }); return; }
+        const version = financial.updatePolicy({ capCents: capCents as number, perPaymentCapCents: perPaymentCapCents as number, freshnessSeconds: freshnessSeconds as number, actor: { actorId: "owner", role: "owner" }, at: new Date().toISOString() });
+        sendJson(res, 200, { policyVersion: version, policy: financial.getPolicy() }); return;
+      }
+      if (req.method === "GET" && path === "/api/financial/discrepancies") {
+        const owner = requireOwner(req); if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        sendJson(res, 200, { discrepancies: financial.getDiscrepancies() }); return;
+      }
+      if (req.method === "POST" && path === "/api/financial/reconcile") {
+        const owner = requireOwner(req); if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        if (opts.baseUrl === undefined || opts.token === undefined) {
+          sendJson(res, 503, { error: "reconcile is not configured: sandbox credentials are missing" }); return;
+        }
+        const reconciled = await reconcilePayPal({ store: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
+        syncLegacyFromFinancial();
+        sendJson(res, 200, { ...reconciled, cap: financial.getCapSummary(new Date().toISOString()) }); return;
       }
 
       if (req.method === "GET" && path === "/api/transactions") {
@@ -292,6 +380,7 @@ export function createSettleServer(opts: {
         const planId = decodeURIComponent(executeMatch[1]);
         const result = await executeApprovedPlan({
           store: opts.allocationStore,
+          financialStore: financial,
           planId,
           actor: { actorId: "owner", role: "owner" },
           baseUrl: opts.baseUrl,
@@ -299,7 +388,10 @@ export function createSettleServer(opts: {
           refreshToken: opts.refreshToken,
           fetchFn: opts.fetchFn,
         });
-        sendJson(res, result.status === "succeeded" ? 200 : result.status === "denied" ? 409 : 502, result);
+        const executionStatus = result.status === "succeeded" ? 200
+          : result.status === "outcome_unknown" ? 202
+            : result.status === "denied" || result.reason.includes("CAP_EXCEEDED:") ? 409 : 502;
+        sendJson(res, executionStatus, result);
         return;
       }
 
@@ -323,6 +415,9 @@ export function createSettleServer(opts: {
         // allowlist and marks the job approved, and the audit trail
         // records who approved what.
         const email = typeof recipient === "string" && recipient !== "" ? recipient : job.paypal_email;
+        const verifiedRecipientId = recipientId(email);
+        if (!financial.getRecipient(verifiedRecipientId)) financial.verifyRecipient({ recipientId: verifiedRecipientId, email, actor: { actorId: "owner", role: "owner" }, at: new Date().toISOString() });
+        if (!financial.getPaymentByJob(job.job_id)) financial.approvePayment({ jobId: job.job_id, recipientId: verifiedRecipientId, requestedRecipientEmail: email, amountCents: job.amount_cents, currency: "USD", actor: { actorId: "owner", role: "owner" }, at: new Date().toISOString() });
         store.allowlistedEmails.add(email);
         job.paypal_email = email;
         job.approval_state = "approved";
@@ -358,10 +453,9 @@ export function createSettleServer(opts: {
         // The weekly cap is enforced against what is already paid in this
         // window, not from zero, so the number on screen and the number
         // the check enforces are the same number.
-        const weeklyCapCents = (policy ?? DEFAULT_POLICY).weeklyCapCents;
-        const spentInWindowCents = store.jobs
-          .filter((job) => job.status === "paid")
-          .reduce((sum, job) => sum + job.amount_cents, 0);
+        const weeklyCapCents = financial.getPolicy().capCents;
+        const capSummary = financial.getCapSummary(new Date().toISOString());
+        const spentInWindowCents = capSummary.eligibleSpendCents + capSummary.activeReservationsCents;
         // Run budget: the owner's cap on this run only, in cents. The
         // dashboard sends dollars and converts; the default is the
         // weekly cap left, so a run with no budget given can still pay
@@ -449,10 +543,11 @@ export function createSettleServer(opts: {
             }));
           }
         }
+        let ambiguousExecution = false;
         const result: AgentLoopResult = await runAgentLoop({
           jobs: store.jobs,
           allowlistedEmails: store.allowlistedEmails,
-          policy,
+          policy: activePolicy(),
           spentInWindowCents,
           proposer,
           audit: store.audit,
@@ -463,6 +558,53 @@ export function createSettleServer(opts: {
           runBudgetCents,
           held: loopHeld,
           actorAuthorized: true,
+          payFn: async ({ jobs: selectedJobs }) => {
+            const accepted: Job[] = [];
+            const rejected: Job[] = [];
+            const providerItems: Array<ReturnType<FinancialStore["getPayoutItem"]>> = [];
+            const providerBatches: string[] = [];
+            for (const job of selectedJobs) {
+              try {
+                const sub = await submitApprovedPayment({ store: financial, jobId: job.job_id, baseUrl: opts.baseUrl!, token: opts.token!, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
+                providerItems.push(sub.item);
+                if (sub.batchStatus) providerBatches.push(sub.batchStatus);
+                if (sub.status === "provider_confirmed") {
+                  job.status = "paid";
+                  job.payout_batch_id = sub.item?.payoutBatchId as string;
+                  accepted.push(job);
+                } else {
+                  job.status = "waiting";
+                  job.decision_reason = `provider item ${sub.item?.status ?? "UNKNOWN"}`;
+                  rejected.push(job);
+                }
+              } catch (error) {
+                const state = financial.getPaymentByJob(job.job_id)?.status;
+                if (state === "outcome_unknown") {
+                  ambiguousExecution = true;
+                  job.status = "blocked";
+                  job.decision_reason = "OutcomeUnknown: reconcile provider state before retrying";
+                  rejected.push(job);
+                  break;
+                }
+                throw error;
+              }
+            }
+            const failedBatchStatus = providerBatches.length > 0 && providerBatches.every((s) => s === "DENIED") ? "DENIED" : "FAILED";
+            const batchStatus = ambiguousExecution
+              ? "OUTCOME_UNKNOWN"
+              : accepted.length === 0
+                ? (rejected.length > 0 ? failedBatchStatus : null)
+                : rejected.length > 0
+                  ? "PARTIAL"
+                  : "SUCCESS";
+            return {
+              accepted,
+              rejected,
+              payoutBatchId: providerItems[0]?.payoutBatchId as string | undefined ?? null,
+              senderBatchId: providerItems[0]?.senderBatchId as string | undefined ?? null,
+              batchStatus,
+            };
+          },
         });
         // Billing: the client is billed for the same jobs the payout just
         // paid, with the client email the owner set in local .env. Only a
@@ -506,6 +648,19 @@ export function createSettleServer(opts: {
               invoiceStatus = "SENT";
               invoiceTotalCents = bill.totalCents;
               for (const jobId of bill.jobIds) store.invoicedJobIds.add(jobId);
+              const detail = bill.invoice.raw?.detail as Record<string, unknown> | undefined;
+              financial.recordInvoiceEvidence({
+                internalInvoiceId: `invoice-${bill.jobIds.slice().sort().join("+")}`,
+                paypalInvoiceId: bill.invoice.invoiceId,
+                invoiceNumber: typeof detail?.invoice_number === "string" ? detail.invoice_number : null,
+                status: bill.invoice.status,
+                amountCents: bill.totalCents,
+                currency: "USD",
+                jobIds: bill.jobIds,
+                endpoint: `/v2/invoicing/invoices/${bill.invoice.invoiceId}`,
+                retrievedAt: new Date().toISOString(),
+                raw: bill.invoice.raw,
+              });
               store.audit.write({
                 actor: "agent",
                 job_id: bill.jobIds[0] ?? firstPaidJob.job_id,
@@ -550,7 +705,7 @@ export function createSettleServer(opts: {
               ? "no jobs were paid, nothing to bill"
               : `batch was ${result.batchStatus}, nothing was paid to bill`;
         }
-        sendJson(res, 200, {
+        sendJson(res, ambiguousExecution ? 202 : 200, {
           accepted: result.accepted.map((job) => job.job_id),
           rejected: result.rejected.map((r) => ({ job_id: r.proposalJobId, label: r.label, reason: r.reason })),
           payout_batch_id: result.payoutBatchId,
@@ -588,7 +743,8 @@ export function createSettleServer(opts: {
       sendJson(res, 404, { error: `no route ${req.method} ${path}` });
     } catch (err) {
       const message = err instanceof Error ? err.message : "unknown error";
-      sendJson(res, 500, { error: message });
+      const conflict = /^(CAP_EXCEEDED:|SUBMISSION_CONFLICT:|provider reconciliation is stale|payment outcome is unknown|payment is not owner-approved|payment cannot be reserved)/.test(message);
+      sendJson(res, conflict ? 409 : 500, { error: message });
     }
   });
 

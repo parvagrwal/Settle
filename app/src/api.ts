@@ -44,8 +44,17 @@ export interface AuditRow {
 export interface Caps {
   per_payment_cap_cents: number;
   weekly_cap_cents: number;
+  rolling_cap_cents?: number;
+  window_hours?: number;
   window_days: number;
   approval_expiry_days: number;
+  policy_version?: number;
+  freshness_seconds?: number;
+  eligibleSpendCents?: number;
+  activeReservationsCents?: number;
+  remainingCents?: number;
+  lastSuccessfulReconciliation?: string | null;
+  fresh?: boolean;
   worst_case_exposure: string;
 }
 
@@ -67,6 +76,18 @@ export interface PayResult {
   invoice_status?: string | null;
   invoice_total_cents?: number | null;
   invoice_error?: string | null;
+  /** HTTP 202 means a provider submission became ambiguous. */
+  httpStatus?: number;
+  outcomeUnknown?: boolean;
+}
+
+export interface FinancialDiscrepancy {
+  discrepancy_id: string;
+  payment_id: string | null;
+  type: string;
+  details_json: string;
+  detected_at: string;
+  resolved_at: string | null;
 }
 
 /** One grid row plus the money columns the dashboard shows. */
@@ -195,5 +216,49 @@ export async function payJobs(opts: { runBudgetCents?: number; selectedJobIds?: 
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `pay failed, HTTP ${res.status}`);
   }
-  return (await res.json()) as PayResult;
+  const body = (await res.json()) as PayResult;
+  return {
+    ...body,
+    httpStatus: res.status,
+    outcomeUnknown: res.status === 202 || body.batch_status === "OUTCOME_UNKNOWN",
+  };
+}
+
+export async function reconcileFinancial(): Promise<{ batchesRead: number; itemsRecorded: number }> {
+  const res = await fetch("/api/financial/reconcile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...ownerHeaders() },
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `reconcile failed, HTTP ${res.status}`);
+  }
+  return (await res.json()) as { batchesRead: number; itemsRecorded: number };
+}
+
+export async function updateFinancialPolicy(input: {
+  capCents: number;
+  perPaymentCapCents: number;
+  freshnessSeconds: number;
+}): Promise<{ policyVersion: number }> {
+  const res = await fetch("/api/financial/policy", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...ownerHeaders() },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `policy update failed, HTTP ${res.status}`);
+  }
+  return (await res.json()) as { policyVersion: number };
+}
+
+export async function fetchFinancialDiscrepancies(): Promise<FinancialDiscrepancy[]> {
+  const res = await fetch("/api/financial/discrepancies", { headers: ownerHeaders() });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `discrepancy fetch failed, HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as { discrepancies: FinancialDiscrepancy[] };
+  return body.discrepancies;
 }

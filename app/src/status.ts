@@ -15,6 +15,8 @@ export function statusLabel(status: string): string {
       return "Unclaimed";
     case "failed":
       return "Failed";
+    case "outcome_unknown":
+      return "Outcome unknown — reconcile required";
     default:
       return status;
   }
