@@ -1,5 +1,9 @@
 # Settle — payouts for a small studio
 
+> **2026-11-09 transaction-intelligence update:** the default dashboard now reads a durable ledger of PayPal-postback-verified events, with AG Grid operations, a separate AG Studio analytical view, and evidence-grounded investigation. Configure `PAYPAL_WEBHOOK_ID` and `SETTLE_DB_PATH` as shown in `.env.example`. With no verified events, the dashboard is intentionally empty.
+>
+> **Proof status:** 123 Node tests pass and the frontend production build passes. Browser E2E is blocked by missing Chromium shared libraries; live webhook and browser proof has not been performed. Read [the Phase-0 diagnosis](docs/TRANSACTION-TECHNICAL-DIAGNOSIS.md) and [implementation/evidence matrix](docs/IMPLEMENTATION-EVIDENCE.md) before interpreting older demonstration claims below.
+
 An agent reads approved work, decides who gets paid how much, and pays them with PayPal, inside a weekly cap the owner sets.
 
 Meera runs a six-person design studio. Every Friday she loses three hours matching approved work to freelancer invoices and paying them one by one. Meera is an example, not a real person, and the three hours is an example, not a measured result.

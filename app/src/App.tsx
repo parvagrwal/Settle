@@ -25,11 +25,12 @@ import { statusLabel } from "./status.ts";
 import { sampleRows, sampleResult } from "./data/sample.ts";
 import StudioDashboard from "./StudioDashboard.tsx";
 import ApprovalPanel from "./ApprovalPanel.tsx";
+import TransactionsDashboard from "./TransactionsDashboard.tsx";
 
-type View = "landing" | "dashboard" | "result";
+type View = "landing" | "dashboard" | "result" | "transactions";
 
 export default function App() {
-  const [view, setView] = useState<View>("landing");
+  const [view, setView] = useState<View>("transactions");
   const [rows, setRows] = useState<DashboardRow[]>(sampleRows);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [audit, setAudit] = useState<AuditRow[]>([]);
@@ -220,8 +221,11 @@ export default function App() {
             </button>
           </section>
 
-          <button type="button" className="button button-primary" onClick={() => setView("dashboard")}>
-            Open the dashboard
+          <button type="button" className="button button-primary" onClick={() => setView("transactions")}>
+            Open transaction intelligence
+          </button>
+          <button type="button" className="button button-secondary" onClick={() => setView("dashboard")}>
+            Open payout workflow
           </button>
         </main>
       )}
@@ -305,6 +309,8 @@ export default function App() {
           </footer>
         </main>
       )}
+
+      {view === "transactions" && <TransactionsDashboard />}
 
       {view === "result" && (
         <main>

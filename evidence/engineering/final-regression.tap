@@ -1,0 +1,668 @@
+
+> settle@0.0.0 test
+> node --test tests/*.test.ts
+
+TAP version 13
+# (node:3189) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: audit log is append-only: rows get ids in order, and returned rows are copies
+ok 1 - audit log is append-only: rows get ids in order, and returned rows are copies
+  ---
+  duration_ms: 0.828989
+  type: 'test'
+  ...
+# Subtest: audit row from a decision names the rule, the cap, and the job
+ok 2 - audit row from a decision names the rule, the cap, and the job
+  ---
+  duration_ms: 0.253025
+  type: 'test'
+  ...
+# Subtest: hallucinated amount over the per-payment cap is rejected, payout never called
+ok 3 - hallucinated amount over the per-payment cap is rejected, payout never called
+  ---
+  duration_ms: 0.456427
+  type: 'test'
+  ...
+# Subtest: hallucinated amount over the weekly cap is rejected, payout never called
+ok 4 - hallucinated amount over the weekly cap is rejected, payout never called
+  ---
+  duration_ms: 0.262492
+  type: 'test'
+  ...
+# Subtest: hallucinated recipient, not on the allowlist, is rejected, payout never called
+ok 5 - hallucinated recipient, not on the allowlist, is rejected, payout never called
+  ---
+  duration_ms: 0.201339
+  type: 'test'
+  ...
+# Subtest: proposal naming a job that does not exist is rejected, payout never called
+ok 6 - proposal naming a job that does not exist is rejected, payout never called
+  ---
+  duration_ms: 0.122606
+  type: 'test'
+  ...
+# Subtest: amount inside the caps but different from the approved job is still refused
+ok 7 - amount inside the caps but different from the approved job is still refused
+  ---
+  duration_ms: 0.173939
+  type: 'test'
+  ...
+# Subtest: expired approval is rejected, payout never called
+ok 8 - expired approval is rejected, payout never called
+  ---
+  duration_ms: 0.19313
+  type: 'test'
+  ...
+# Subtest: valid proposal pays, and a rejected job in the same loop is left out
+ok 9 - valid proposal pays, and a rejected job in the same loop is left out
+  ---
+  duration_ms: 0.573707
+  type: 'test'
+  ...
+# Subtest: duplicate payment for an already-paid job is rejected, payout never called
+ok 10 - duplicate payment for an already-paid job is rejected, payout never called
+  ---
+  duration_ms: 0.407836
+  type: 'test'
+  ...
+# Subtest: every decision writes an audit row, including rejections
+ok 11 - every decision writes an audit row, including rejections
+  ---
+  duration_ms: 0.347672
+  type: 'test'
+  ...
+# Subtest: rule-based proposer proposes approved waiting jobs only, labelled rule-based
+ok 12 - rule-based proposer proposes approved waiting jobs only, labelled rule-based
+  ---
+  duration_ms: 0.091043
+  type: 'test'
+  ...
+# Subtest: routes: owner approves a new email once, then pay pays it, audit shows all three steps
+ok 13 - routes: owner approves a new email once, then pay pays it, audit shows all three steps
+  ---
+  duration_ms: 35.226609
+  type: 'test'
+  ...
+# Subtest: routes: pay with no sandbox credentials returns 503 and names the missing setup
+ok 14 - routes: pay with no sandbox credentials returns 503 and names the missing setup
+  ---
+  duration_ms: 6.8517
+  type: 'test'
+  ...
+# Subtest: routes: approve of an unknown job returns 404, and no response carries the token
+ok 15 - routes: approve of an unknown job returns 404, and no response carries the token
+  ---
+  duration_ms: 8.053255
+  type: 'test'
+  ...
+# Subtest: cents to dollars: 10000 cents is $100.00, 1 cent is $0.01
+ok 16 - cents to dollars: 10000 cents is $100.00, 1 cent is $0.01
+  ---
+  duration_ms: 0.932909
+  type: 'test'
+  ...
+# Subtest: decide gate blocks an unapproved job, mock PayPal is never called
+ok 17 - decide gate blocks an unapproved job, mock PayPal is never called
+  ---
+  duration_ms: 0.44143
+  type: 'test'
+  ...
+# Subtest: decide gate blocks an over-cap job, mock PayPal is never called
+ok 18 - decide gate blocks an over-cap job, mock PayPal is never called
+  ---
+  duration_ms: 0.120715
+  type: 'test'
+  ...
+# Subtest: decide gate blocks a duplicate job, mock PayPal is never called
+ok 19 - decide gate blocks a duplicate job, mock PayPal is never called
+  ---
+  duration_ms: 0.102982
+  type: 'test'
+  ...
+# Subtest: create batch sends the right payload, with a unique sender_batch_id and PayPal-Request-Id
+ok 20 - create batch sends the right payload, with a unique sender_batch_id and PayPal-Request-Id
+  ---
+  duration_ms: 0.799839
+  type: 'test'
+  ...
+# Subtest: replay: retry after a 5xx returns the original batch, not a second payment
+ok 21 - replay: retry after a 5xx returns the original batch, not a second payment
+  ---
+  duration_ms: 1001.768773
+  type: 'test'
+  ...
+# Subtest: 401 refreshes the token once, then succeeds
+ok 22 - 401 refreshes the token once, then succeeds
+  ---
+  duration_ms: 2.80029
+  type: 'test'
+  ...
+# Subtest: 403 PAYOUT_NOT_AVAILABLE throws, with no retry
+ok 23 - 403 PAYOUT_NOT_AVAILABLE throws, with no retry
+  ---
+  duration_ms: 0.409162
+  type: 'test'
+  ...
+# Subtest: 400 duplicate throws DUPLICATE_REQUEST_ID, caller must use a fresh sender_batch_id
+ok 24 - 400 duplicate throws DUPLICATE_REQUEST_ID, caller must use a fresh sender_batch_id
+  ---
+  duration_ms: 0.487124
+  type: 'test'
+  ...
+# Subtest: 429 backs off, then succeeds, with the same requestId
+ok 25 - 429 backs off, then succeeds, with the same requestId
+  ---
+  duration_ms: 1002.907567
+  type: 'test'
+  ...
+# Subtest: poll returns SUCCESS after PENDING
+ok 26 - poll returns SUCCESS after PENDING
+  ---
+  duration_ms: 2.159742
+  type: 'test'
+  ...
+# Subtest: payApprovedJobs: accepted jobs get the batch ID and paid status, rejected jobs get no PayPal call
+ok 27 - payApprovedJobs: accepted jobs get the batch ID and paid status, rejected jobs get no PayPal call
+  ---
+  duration_ms: 0.502982
+  type: 'test'
+  ...
+# Subtest: invoice build rejects an unapproved job, mock PayPal is never called
+ok 28 - invoice build rejects an unapproved job, mock PayPal is never called
+  ---
+  duration_ms: 0.292419
+  type: 'test'
+  ...
+# Subtest: invoice build rejects a job already billed, mock PayPal is never called
+ok 29 - invoice build rejects a job already billed, mock PayPal is never called
+  ---
+  duration_ms: 0.109786
+  type: 'test'
+  ...
+# Subtest: create invoice sends the right payload, items from the same approved jobs
+ok 30 - create invoice sends the right payload, items from the same approved jobs
+  ---
+  duration_ms: 0.418326
+  type: 'test'
+  ...
+# Subtest: create invoice reads the ID from the self link when the reply has no id
+ok 31 - create invoice reads the ID from the self link when the reply has no id
+  ---
+  duration_ms: 0.3072
+  type: 'test'
+  ...
+# Subtest: send invoice returns SENT, read back by GET
+ok 32 - send invoice returns SENT, read back by GET
+  ---
+  duration_ms: 0.181457
+  type: 'test'
+  ...
+# Subtest: invoicing failure leaves the payout standing, invoice row is manual
+ok 33 - invoicing failure leaves the payout standing, invoice row is manual
+  ---
+  duration_ms: 0.25674
+  type: 'test'
+  ...
+# Subtest: batch read: items, amounts, and transaction IDs come out of the poll
+ok 34 - batch read: items, amounts, and transaction IDs come out of the poll
+  ---
+  duration_ms: 2.822539
+  type: 'test'
+  ...
+# Subtest: Reporting lag: no match yet is a finding, not a failure
+ok 35 - Reporting lag: no match yet is a finding, not a failure
+  ---
+  duration_ms: 0.329418
+  type: 'test'
+  ...
+# Subtest: failed batch: a denied batch fails the check
+ok 36 - failed batch: a denied batch fails the check
+  ---
+  duration_ms: 0.379823
+  type: 'test'
+  ...
+# Subtest: settled batch: an item with no transaction ID fails the check
+ok 37 - settled batch: an item with no transaction ID fails the check
+  ---
+  duration_ms: 0.221546
+  type: 'test'
+  ...
+# Subtest: unsettled batch: a pending batch is not a failure
+ok 38 - unsettled batch: a pending batch is not a failure
+  ---
+  duration_ms: 0.411268
+  type: 'test'
+  ...
+# Subtest: save: the full result is written as JSON
+ok 39 - save: the full result is written as JSON
+  ---
+  duration_ms: 1.042889
+  type: 'test'
+  ...
+# Subtest: 256 combination cases: every mask 0..255, expected from predicates
+ok 40 - 256 combination cases: every mask 0..255, expected from predicates
+  ---
+  duration_ms: 1.18991
+  type: 'test'
+  ...
+# Subtest: boundary: $200.00 accepts, $200.01 is PerRequestCapExceeded
+ok 41 - boundary: $200.00 accepts, $200.01 is PerRequestCapExceeded
+  ---
+  duration_ms: 0.171222
+  type: 'test'
+  ...
+# Subtest: boundary: exact $1,500 weekly fill accepts, one cent over is WindowCapExceeded
+ok 42 - boundary: exact $1,500 weekly fill accepts, one cent over is WindowCapExceeded
+  ---
+  duration_ms: 0.194905
+  type: 'test'
+  ...
+# Subtest: boundary: window cap outranks per-request cap
+ok 43 - boundary: window cap outranks per-request cap
+  ---
+  duration_ms: 0.100445
+  type: 'test'
+  ...
+# Subtest: boundary: now exactly at expiry is not approved; 1s before is
+ok 44 - boundary: now exactly at expiry is not approved; 1s before is
+  ---
+  duration_ms: 0.103617
+  type: 'test'
+  ...
+# Subtest: boundary: new window with spent reset to 0 accepts a previously impossible spend
+ok 45 - boundary: new window with spent reset to 0 accepts a previously impossible spend
+  ---
+  duration_ms: 0.07607
+  type: 'test'
+  ...
+# Subtest: boundary: maximum representable amount is WindowCapExceeded, never a panic
+ok 46 - boundary: maximum representable amount is WindowCapExceeded, never a panic
+  ---
+  duration_ms: 0.082967
+  type: 'test'
+  ...
+# Subtest: boundary: zero and negative amounts are ZeroAmount
+ok 47 - boundary: zero and negative amounts are ZeroAmount
+  ---
+  duration_ms: 0.112629
+  type: 'test'
+  ...
+# Subtest: precedence pairs: every co-occurring pair returns the higher label
+ok 48 - precedence pairs: every co-occurring pair returns the higher label
+  ---
+  duration_ms: 1.390167
+  type: 'test'
+  ...
+# Subtest: decide is pure: same inputs give the same decision, inputs unchanged
+ok 49 - decide is pure: same inputs give the same decision, inputs unchanged
+  ---
+  duration_ms: 0.833593
+  type: 'test'
+  ...
+# Subtest: model success wires model proposals into a sync proposer
+ok 50 - model success wires model proposals into a sync proposer
+  ---
+  duration_ms: 0.961746
+  type: 'test'
+  ...
+# Subtest: a 429 falls back to rule-based and names the failure
+ok 51 - a 429 falls back to rule-based and names the failure
+  ---
+  duration_ms: 0.267129
+  type: 'test'
+  ...
+# Subtest: a reply naming an unknown job falls back to rule-based
+ok 52 - a reply naming an unknown job falls back to rule-based
+  ---
+  duration_ms: 0.197898
+  type: 'test'
+  ...
+# Subtest: no key falls back to rule-based without calling the model
+ok 53 - no key falls back to rule-based without calling the model
+  ---
+  duration_ms: 0.166972
+  type: 'test'
+  ...
+# Subtest: groqPropose parses a good reply, proposals labelled model with reasons
+ok 54 - groqPropose parses a good reply, proposals labelled model with reasons
+  ---
+  duration_ms: 0.928604
+  type: 'test'
+  ...
+# Subtest: groqPropose refuses a reply naming an unknown job
+ok 55 - groqPropose refuses a reply naming an unknown job
+  ---
+  duration_ms: 0.363909
+  type: 'test'
+  ...
+# Subtest: groqPropose refuses a reply with a non-integer amount
+ok 56 - groqPropose refuses a reply with a non-integer amount
+  ---
+  duration_ms: 0.230664
+  type: 'test'
+  ...
+# Subtest: groqPropose names a 429 instead of failing silently
+ok 57 - groqPropose names a 429 instead of failing silently
+  ---
+  duration_ms: 0.145244
+  type: 'test'
+  ...
+# Subtest: groqPropose refuses a reply that is not valid JSON
+ok 58 - groqPropose refuses a reply that is not valid JSON
+  ---
+  duration_ms: 0.163544
+  type: 'test'
+  ...
+# Subtest: groqModelLive finds the model id in the models list
+ok 59 - groqModelLive finds the model id in the models list
+  ---
+  duration_ms: 0.175029
+  type: 'test'
+  ...
+# Subtest: investigation question returns evidence, calculations and exact rows requiring attention
+ok 60 - investigation question returns evidence, calculations and exact rows requiring attention
+  ---
+  duration_ms: 11.359499
+  type: 'test'
+  ...
+# Subtest: causal question without comparison evidence is explicitly unresolved
+ok 61 - causal question without comparison evidence is explicitly unresolved
+  ---
+  duration_ms: 0.448221
+  type: 'test'
+  ...
+# Subtest: empty database returns no invented financial conclusion
+ok 62 - empty database returns no invented financial conclusion
+  ---
+  duration_ms: 0.231225
+  type: 'test'
+  ...
+# Subtest: optional model receives computed evidence and cannot introduce supporting IDs
+ok 63 - optional model receives computed evidence and cannot introduce supporting IDs
+  ---
+  duration_ms: 0.749252
+  type: 'test'
+  ...
+# (node:3298) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: pay bills only the jobs the payout paid, client email from the server settings
+ok 64 - pay bills only the jobs the payout paid, client email from the server settings
+  ---
+  duration_ms: 49.683016
+  type: 'test'
+  ...
+# Subtest: second pay click bills nothing new, no second invoice is created
+ok 65 - second pay click bills nothing new, no second invoice is created
+  ---
+  duration_ms: 16.195591
+  type: 'test'
+  ...
+# Subtest: billing the same jobs twice rejects the second bill as already billed
+ok 66 - billing the same jobs twice rejects the second bill as already billed
+  ---
+  duration_ms: 1.37949
+  type: 'test'
+  ...
+# Subtest: failed invoice does not unpay or fail the payout, invoice is manual
+ok 67 - failed invoice does not unpay or fail the payout, invoice is manual
+  ---
+  duration_ms: 11.340304
+  type: 'test'
+  ...
+# Subtest: no client email configured: payout works, invoice skipped, no invoicing call
+ok 68 - no client email configured: payout works, invoice skipped, no invoicing call
+  ---
+  duration_ms: 4.136837
+  type: 'test'
+  ...
+# Subtest: denied batch makes no invoice call, invoice skipped
+ok 69 - denied batch makes no invoice call, invoice skipped
+  ---
+  duration_ms: 5.212247
+  type: 'test'
+  ...
+# Subtest: jobs already invoiced are not billed again: no new invoice, no invoice call
+ok 70 - jobs already invoiced are not billed again: no new invoice, no invoice call
+  ---
+  duration_ms: 8.825853
+  type: 'test'
+  ...
+# Subtest: attempt 1: plain transfer by an unauthorised actor must fail
+ok 71 - attempt 1: plain transfer by an unauthorised actor must fail
+  ---
+  duration_ms: 0.555596
+  type: 'test'
+  ...
+# Subtest: attempt 2: transfer to a recipient not on the allowlist must fail
+ok 72 - attempt 2: transfer to a recipient not on the allowlist must fail
+  ---
+  duration_ms: 0.159938
+  type: 'test'
+  ...
+# Subtest: attempt 3a: over-policy amount $200.01 must fail as PerRequestCapExceeded
+ok 73 - attempt 3a: over-policy amount $200.01 must fail as PerRequestCapExceeded
+  ---
+  duration_ms: 0.077001
+  type: 'test'
+  ...
+# Subtest: attempt 3b: amount that would take the week over $1,500 must fail as WindowCapExceeded
+ok 74 - attempt 3b: amount that would take the week over $1,500 must fail as WindowCapExceeded
+  ---
+  duration_ms: 0.076773
+  type: 'test'
+  ...
+# Subtest: attempt 4: owner function signed by the constrained actor must fail, policy unchanged
+ok 75 - attempt 4: owner function signed by the constrained actor must fail, policy unchanged
+  ---
+  duration_ms: 0.559342
+  type: 'test'
+  ...
+# (node:3313) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: caps endpoint returns the locked caps and the worst-case line
+ok 76 - caps endpoint returns the locked caps and the worst-case line
+  ---
+  duration_ms: 47.008246
+  type: 'test'
+  ...
+# Subtest: static serving: home page, asset, missing asset 404, screen falls back to home
+ok 77 - static serving: home page, asset, missing asset 404, screen falls back to home
+  ---
+  duration_ms: 41.174897
+  type: 'test'
+  ...
+# Subtest: pay with seed jobs: waiting jobs paid, over-cap refused, proposer named
+ok 78 - pay with seed jobs: waiting jobs paid, over-cap refused, proposer named
+  ---
+  duration_ms: 21.630998
+  type: 'test'
+  ...
+# Subtest: home page without a built dashboard names the build step
+ok 79 - home page without a built dashboard names the build step
+  ---
+  duration_ms: 5.000353
+  type: 'test'
+  ...
+# (node:3321) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: verified payout item preserves payment, webhook and actual fee identities
+ok 80 - verified payout item preserves payment, webhook and actual fee identities
+  ---
+  duration_ms: 2.131369
+  type: 'test'
+  ...
+# Subtest: duplicate verified event is idempotent and preserves one history row
+ok 81 - duplicate verified event is idempotent and preserves one history row
+  ---
+  duration_ms: 0.775839
+  type: 'test'
+  ...
+# Subtest: older pending event cannot overwrite newer success; history remains ordered
+ok 82 - older pending event cannot overwrite newer success; history remains ordered
+  ---
+  duration_ms: 0.795304
+  type: 'test'
+  ...
+# Subtest: terminal success cannot regress even if a conflicting later failure arrives
+ok 83 - terminal success cannot regress even if a conflicting later failure arrives
+  ---
+  duration_ms: 0.673085
+  type: 'test'
+  ...
+# Subtest: file database survives reopen and delta cursor returns only later changes
+ok 84 - file database survives reopen and delta cursor returns only later changes
+  ---
+  duration_ms: 8.469677
+  type: 'test'
+  ...
+# Subtest: invalid event is rejected atomically without event or transaction rows
+ok 85 - invalid event is rejected atomically without event or transaction rows
+  ---
+  duration_ms: 0.771923
+  type: 'test'
+  ...
+# Subtest: all three agree, the grid is proved
+ok 86 - all three agree, the grid is proved
+  ---
+  duration_ms: 1.21594
+  type: 'test'
+  ...
+# Subtest: sabotage through the owner path: stored receiver changed, verifier fails naming the job and the receiver
+ok 87 - sabotage through the owner path: stored receiver changed, verifier fails naming the job and the receiver
+  ---
+  duration_ms: 0.170504
+  type: 'test'
+  ...
+# Subtest: stored-copy attack: stored receiver edited directly, verifier fails
+ok 88 - stored-copy attack: stored receiver edited directly, verifier fails
+  ---
+  duration_ms: 0.159343
+  type: 'test'
+  ...
+# Subtest: Reporting payer is the freelancer, the grid still proves, because payer_info holds the recipient for a payout
+ok 89 - Reporting payer is the freelancer, the grid still proves, because payer_info holds the recipient for a payout
+  ---
+  duration_ms: 0.096935
+  type: 'test'
+  ...
+# Subtest: Reporting amount positive means money came in, verifier fails
+ok 90 - Reporting amount positive means money came in, verifier fails
+  ---
+  duration_ms: 0.183456
+  type: 'test'
+  ...
+# Subtest: Reporting missing the transaction is a named drift, not a pass
+ok 91 - Reporting missing the transaction is a named drift, not a pass
+  ---
+  duration_ms: 0.091352
+  type: 'test'
+  ...
+# Subtest: amount mismatch between the stored copy and PayPal fails
+ok 92 - amount mismatch between the stored copy and PayPal fails
+  ---
+  duration_ms: 0.125788
+  type: 'test'
+  ...
+# Subtest: the agent named as receiver fails the roles check
+ok 93 - the agent named as receiver fails the roles check
+  ---
+  duration_ms: 0.088666
+  type: 'test'
+  ...
+# Subtest: code hash changed fails the code identity check, matching hashes pass
+ok 94 - code hash changed fails the code identity check, matching hashes pass
+  ---
+  duration_ms: 0.708422
+  type: 'test'
+  ...
+# Subtest: listTransactions parses the Reporting reply
+ok 95 - listTransactions parses the Reporting reply
+  ---
+  duration_ms: 1.17645
+  type: 'test'
+  ...
+# Subtest: listTransactions rejects a search longer than 31 days and a page size over 500
+ok 96 - listTransactions rejects a search longer than 31 days and a page size over 500
+  ---
+  duration_ms: 0.478283
+  type: 'test'
+  ...
+# Subtest: dollarsToCents converts dollars strings to integer cents
+ok 97 - dollarsToCents converts dollars strings to integer cents
+  ---
+  duration_ms: 0.117986
+  type: 'test'
+  ...
+# Subtest: no payout item for a stored job fails, naming the job
+ok 98 - no payout item for a stored job fails, naming the job
+  ---
+  duration_ms: 0.069016
+  type: 'test'
+  ...
+# Subtest: stored batch ID different from the live batch fails
+ok 99 - stored batch ID different from the live batch fails
+  ---
+  duration_ms: 0.055898
+  type: 'test'
+  ...
+# Subtest: storedRowsFromCreate reads the payout record, jobs plus batch ID
+ok 100 - storedRowsFromCreate reads the payout record, jobs plus batch ID
+  ---
+  duration_ms: 0.128633
+  type: 'test'
+  ...
+# Subtest: payoutItemsFromPoll reads the batch items from a Payouts GET reply
+ok 101 - payoutItemsFromPoll reads the batch items from a Payouts GET reply
+  ---
+  duration_ms: 0.158432
+  type: 'test'
+  ...
+# Subtest: payoutItemsFromPoll accepts a flat item with a number amount
+ok 102 - payoutItemsFromPoll accepts a flat item with a number amount
+  ---
+  duration_ms: 0.116875
+  type: 'test'
+  ...
+# Subtest: payoutItemsFromPoll names the missing field when an item is incomplete
+ok 103 - payoutItemsFromPoll names the missing field when an item is incomplete
+  ---
+  duration_ms: 0.138819
+  type: 'test'
+  ...
+# (node:3335) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: webhook fails closed before parsing/processing when required headers are missing
+ok 104 - webhook fails closed before parsing/processing when required headers are missing
+  ---
+  duration_ms: 37.197314
+  type: 'test'
+  ...
+# Subtest: PayPal verification failure returns 401 and stores nothing
+ok 105 - PayPal verification failure returns 401 and stores nothing
+  ---
+  duration_ms: 7.630798
+  type: 'test'
+  ...
+# {"type":"paypal_webhook_processed","eventId":"WH-1","correlationId":"TRANSMISSION-1","outcome":"applied","rowKey":"POI-1"}
+# {"type":"paypal_webhook_processed","eventId":"WH-1","correlationId":"TRANSMISSION-1","outcome":"duplicate","rowKey":"POI-1"}
+# Subtest: verified raw event reaches idempotent store and persisted delta/history APIs
+ok 106 - verified raw event reaches idempotent store and persisted delta/history APIs
+  ---
+  duration_ms: 36.999662
+  type: 'test'
+  ...
+# Subtest: malformed JSON is not stored even when verifier is available
+ok 107 - malformed JSON is not stored even when verifier is available
+  ---
+  duration_ms: 4.742535
+  type: 'test'
+  ...
+1..107
+# tests 107
+# suites 0
+# pass 107
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4000.161342

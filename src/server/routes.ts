@@ -17,6 +17,9 @@ import { createAuditLog, type AuditLog, type AuditRow } from "./audit.ts";
 import type { Job } from "./jobs.ts";
 import type { Policy } from "../shared/types.ts";
 import type { FetchFn } from "./paypalClient.ts";
+import { TransactionStore } from "./transactionStore.ts";
+import { transmissionFromHeaders, verifyWithPayPal } from "./webhooks.ts";
+import { investigateTransactions, narrateInvestigation } from "./investigation.ts";
 
 export interface GridRow {
   job_id: string;
@@ -110,6 +113,18 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   return parsed as Record<string, unknown>;
 }
 
+async function readRawBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    if (size > maxBytes) throw new Error("webhook: request body too large");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export function createSettleServer(opts: {
   jobs: Job[];
   allowlistedEmails: Set<string>;
@@ -127,6 +142,10 @@ export function createSettleServer(opts: {
   clientEmail?: string;
   /** Folder with the built dashboard. Without it, only the API is served. */
   staticDir?: string;
+  /** Durable verified-event projection. Required for transaction APIs. */
+  transactionStore?: TransactionStore;
+  /** PayPal webhook subscription ID, used only for postback verification. */
+  webhookId?: string;
 }): SettleServer {
   const store: SettleStore = {
     jobs: opts.jobs,
@@ -163,6 +182,65 @@ export function createSettleServer(opts: {
           approval_expiry_days: 7,
           worst_case_exposure: "Worst-case exposure: $1,500 per week.",
         });
+        return;
+      }
+
+      if (req.method === "GET" && path === "/api/transactions") {
+        if (!opts.transactionStore) { sendJson(res, 503, { error: "transaction store is not configured" }); return; }
+        const since = Number(url.searchParams.get("since") ?? "0");
+        if (!Number.isSafeInteger(since) || since < 0) { sendJson(res, 400, { error: "since must be a non-negative integer" }); return; }
+        sendJson(res, 200, {
+          transactions: opts.transactionStore.listTransactions(since),
+          cursor: opts.transactionStore.currentSequence(),
+          serverTime: new Date().toISOString(),
+          source: "persisted verified PayPal events",
+        });
+        return;
+      }
+
+      const historyMatch = path.match(/^\/api\/transactions\/([^/]+)\/history$/);
+      if (req.method === "GET" && historyMatch) {
+        if (!opts.transactionStore) { sendJson(res, 503, { error: "transaction store is not configured" }); return; }
+        const rowKey = decodeURIComponent(historyMatch[1]);
+        if (!opts.transactionStore.getTransaction(rowKey)) { sendJson(res, 404, { error: "transaction not found" }); return; }
+        sendJson(res, 200, { transaction: opts.transactionStore.getTransaction(rowKey), events: opts.transactionStore.getHistory(rowKey) });
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/investigate") {
+        if (!opts.transactionStore) { sendJson(res, 503, { error: "transaction store is not configured" }); return; }
+        const body = (await readJsonBody(req)) as { question?: string };
+        if (typeof body.question !== "string" || body.question.trim().length < 3 || body.question.length > 1000) {
+          sendJson(res, 400, { error: "question must contain 3–1000 characters" }); return;
+        }
+        let analysis = investigateTransactions(opts.transactionStore.listTransactions(), body.question);
+        if (process.env.GROQ_API_KEY) analysis = await narrateInvestigation(analysis, process.env.GROQ_API_KEY, opts.fetchFn);
+        sendJson(res, 200, analysis);
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/webhooks/paypal") {
+        if (!opts.transactionStore || !opts.webhookId || opts.baseUrl === undefined || opts.token === undefined) {
+          sendJson(res, 503, { error: "webhook is not configured: transaction store, webhook ID and sandbox credentials are required" }); return;
+        }
+        let transmission;
+        try { transmission = transmissionFromHeaders(req.headers); }
+        catch (error) { sendJson(res, 400, { error: (error as Error).message }); return; }
+        const raw = await readRawBody(req);
+        let event: Record<string, unknown>;
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object");
+          event = parsed as Record<string, unknown>;
+        } catch { sendJson(res, 400, { error: "webhook: body must be a JSON object" }); return; }
+        const verified = await verifyWithPayPal({
+          baseUrl: opts.baseUrl, token: opts.token, webhookId: opts.webhookId,
+          transmission, event, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn,
+        });
+        if (!verified) { sendJson(res, 401, { error: "PayPal webhook signature verification failed" }); return; }
+        const result = opts.transactionStore.processVerifiedEvent(event, new Date().toISOString(), transmission.id);
+        console.log(JSON.stringify({ type: "paypal_webhook_processed", eventId: event.id, correlationId: transmission.id, outcome: result.outcome, rowKey: result.rowKey }));
+        sendJson(res, 200, { verification: "SUCCESS", outcome: result.outcome, duplicate: result.duplicate, rowKey: result.rowKey });
         return;
       }
 

@@ -6,6 +6,14 @@ app/node_modules/
 # Built dashboard.
 app/dist/
 app/.tmp/
+app/.vite-cache/
+# Local durable payment/event database and SQLite sidecars.
+data/*.db
+data/*.db-shm
+data/*.db-wal
+# Browser-test output.
+test-results/
+playwright-report/
 # Logs and OS files.
 *.log
 .DS_Store
