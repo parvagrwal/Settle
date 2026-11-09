@@ -23,6 +23,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createSettleServer } from "../src/server/routes.ts";
+
+// The guarded routes need the owner token. Every test file runs in its
+// own process, so setting it here cannot leak into another file.
+process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
+const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
 import { seedJobs } from "../src/server/seed.ts";
 import { runAgentLoop, type PayFn } from "../src/server/agent.ts";
 import { createAuditLog } from "../src/server/audit.ts";
@@ -201,7 +206,7 @@ async function startServer(mock: ReturnType<typeof makeMock>, opts: { groqApiKey
 async function postPay(port: number, body?: Record<string, unknown>): Promise<{ status: number; data: PayResponse }> {
   const res = await fetch(`http://127.0.0.1:${port}/api/pay`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...OWNER_HEADERS },
     body: JSON.stringify(body ?? {}),
   });
   return { status: res.status, data: (await res.json()) as PayResponse };
@@ -210,7 +215,7 @@ async function postPay(port: number, body?: Record<string, unknown>): Promise<{ 
 async function approve(port: number, jobId: string): Promise<void> {
   const res = await fetch(`http://127.0.0.1:${port}/api/approve`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...OWNER_HEADERS },
     body: JSON.stringify({ job_id: jobId, approver_email: "owner@example.com" }),
   });
   assert.equal(res.status, 200, `approve ${jobId} failed with ${res.status}`);
@@ -283,6 +288,7 @@ test("model reply over the run budget is trimmed, never paid over budget", async
       { jobId: "job-3", recipient: "freelancer@example.com", amountCents: 100, source: "model", reason: "Due third." },
     ],
     payFn,
+    actorAuthorized: true
   });
   assert.deepEqual(
     result.accepted.map((job) => job.job_id),
@@ -404,6 +410,7 @@ test("loop refuses a proposal with a wrong amount or a wrong recipient, never pa
       { jobId: "job-2", recipient: "someone-else@example.com", amountCents: 100, source: "model", reason: "Wrong person." },
     ],
     payFn,
+    actorAuthorized: true
   });
   assert.deepEqual(result.accepted, []);
   assert.equal(result.rejected.length, 2);

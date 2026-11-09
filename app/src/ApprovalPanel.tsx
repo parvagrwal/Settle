@@ -25,11 +25,13 @@ interface ApprovalPanelProps {
   selectedIds: Set<string>;
   onToggleSelect: (jobId: string) => void;
   onPaySelected: () => void;
+  /** False until the owner enters the token: approve and pay stay off. */
+  ownerTokenSet: boolean;
 }
 
 export default function ApprovalPanel(props: ApprovalPanelProps) {
   const { jobs, rows, caps, paying, payError, onApprove, onPay } = props;
-  const { runBudgetDollars, onRunBudgetChange, holdCandidates, holdReason, selectedIds, onToggleSelect, onPaySelected } = props;
+  const { runBudgetDollars, onRunBudgetChange, holdCandidates, holdReason, selectedIds, onToggleSelect, onPaySelected, ownerTokenSet } = props;
   const perPaymentCap = caps?.per_payment_cap_cents ?? 20000;
   const weeklyCap = caps?.weekly_cap_cents ?? 150000;
 
@@ -57,6 +59,12 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
         <strong>{usd(remainingCents)} left</strong>.
       </p>
       <p className="panel-line">{caps?.worst_case_exposure ?? "Worst-case exposure: $1,500 per week."}</p>
+      {!ownerTokenSet && (
+        <p className="panel-line" role="status">
+          Enter the owner token at the top of the page to approve and pay. Approve and pay stay off
+          until it is entered.
+        </p>
+      )}
 
       {needsApproval.length > 0 && (
         <div className="approve-list">
@@ -71,6 +79,7 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
                   type="button"
                   className="button button-secondary"
                   onClick={() => onApprove(job.job_id)}
+                  disabled={!ownerTokenSet}
                 >
                   Approve {job.job_id}
                 </button>
@@ -125,7 +134,7 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
         type="button"
         className="button button-primary"
         onClick={() => onPay(Math.round(runBudgetDollars * 100))}
-        disabled={paying || payableRows.length === 0}
+        disabled={paying || payableRows.length === 0 || !ownerTokenSet}
       >
         {paying ? "Paying…" : `Pay approved jobs (${payableRows.length})`}
       </button>
@@ -158,7 +167,7 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
             type="button"
             className="button button-secondary"
             onClick={onPaySelected}
-            disabled={paying || selectedIds.size === 0}
+            disabled={paying || selectedIds.size === 0 || !ownerTokenSet}
           >
             {paying ? "Paying…" : `Pay selected (${selectedIds.size})`}
           </button>

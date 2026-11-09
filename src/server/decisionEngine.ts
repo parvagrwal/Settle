@@ -43,12 +43,19 @@ export async function orchestrateAllocation(opts: {
 }): Promise<OrchestrationResult> {
   const toolTrace = ["get_validated_context"];
   const scenarios = generateAllocationScenarios(opts.context);
-  const invalid = scenarios.flatMap((plan) => validateAllocationPlan(plan, opts.context, opts.now));
-  if (invalid.length > 0) {
-    return { status: "escalation_required", recommendation: null, deterministicAlternatives: scenarios, escalations: invalid.map((row) => row.message), toolTrace };
+  // Validate every generated scenario up front, so the loop below knows
+  // which ones are safe to fall back to. A scenario that breaks a rule
+  // is never recommended, only recorded as an escalation.
+  const violations = new Map<string, AllocationViolation[]>();
+  for (const plan of scenarios) {
+    const errors = validateAllocationPlan(plan, opts.context, opts.now);
+    if (errors.length > 0) violations.set(plan.planId, errors);
   }
   toolTrace.push("list_valid_scenarios");
   if (!opts.selector) {
+    if (violations.size > 0) {
+      return { status: "escalation_required", recommendation: null, deterministicAlternatives: scenarios, escalations: [...violations.values()].flat().map((row) => row.message), toolTrace };
+    }
     return {
       status: "recommendation_unavailable", recommendation: null, deterministicAlternatives: scenarios,
       escalations: ["AI recommendation is unavailable. No plan was selected or authorized; an owner may explicitly review deterministic alternatives."], toolTrace,
@@ -65,14 +72,31 @@ export async function orchestrateAllocation(opts: {
     return { status: "escalation_required", recommendation: null, deterministicAlternatives: scenarios, escalations: [`${selection.scenarioId} is not a validated scenario. No payment was authorized.`], toolTrace };
   }
   const validationErrors = validateAllocationPlan(selected, opts.context, opts.now);
-  if (validationErrors.length > 0) {
-    return { status: "escalation_required", recommendation: null, deterministicAlternatives: scenarios, escalations: validationErrors.map((row) => row.message), toolTrace };
+  if (validationErrors.length === 0) {
+    return {
+      status: "recommendation_ready",
+      recommendation: { selectedPlan: selected, alternatives: scenarios, reason: selection.reason, uncertainties: selection.uncertainties, changeTriggers: selection.changeTriggers, validationErrors, recommendationSource: "agent" },
+      deterministicAlternatives: scenarios,
+      escalations: [],
+      toolTrace,
+    };
   }
-  return {
-    status: "recommendation_ready",
-    recommendation: { selectedPlan: selected, alternatives: scenarios, reason: selection.reason, uncertainties: selection.uncertainties, changeTriggers: selection.changeTriggers, validationErrors, recommendationSource: "agent" },
-    deterministicAlternatives: scenarios,
-    escalations: [],
-    toolTrace,
-  };
+  // The model's pick broke a rule. Escalate that pick and try the next
+  // scenario in generated order; recommend only one that passes the
+  // validator. If none passes, escalate with no recommendation.
+  toolTrace.push("retry_next_scenario");
+  const escalations: string[] = validationErrors.map((row) => row.message);
+  for (const next of scenarios) {
+    if (next.planId === selected.planId) continue;
+    const errors = validateAllocationPlan(next, opts.context, opts.now);
+    if (errors.length > 0) { escalations.push(...errors.map((row) => row.message)); continue; }
+    return {
+      status: "recommendation_ready",
+      recommendation: { selectedPlan: next, alternatives: scenarios, reason: selection.reason, uncertainties: selection.uncertainties, changeTriggers: selection.changeTriggers, validationErrors: [], recommendationSource: "agent" },
+      deterministicAlternatives: scenarios,
+      escalations: [...escalations, `Model pick ${selected.planId} was refused; next valid scenario ${next.planId} used instead.`],
+      toolTrace,
+    };
+  }
+  return { status: "escalation_required", recommendation: null, deterministicAlternatives: scenarios, escalations, toolTrace };
 }

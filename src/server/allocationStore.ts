@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import type { AllocationContext, AllocationPlan } from "./allocation.ts";
+import { validateAllocationPlan, type AllocationContext, type AllocationPlan } from "./allocation.ts";
 
 export type Role = "owner" | "operator" | "viewer" | "agent";
 export interface Actor { actorId: string; role: Role }
@@ -71,10 +71,31 @@ export class AllocationStore {
     return { plan: JSON.parse(String(row.plan_json)) as AllocationPlan, status: String(row.status), reason: String(row.reason_json), planHash: String(row.plan_hash) };
   }
 
+  getContext(contextId: string): AllocationContext | null {
+    const row = this.db.prepare("SELECT snapshot_json FROM allocation_contexts WHERE context_id = ?").get(contextId) as { snapshot_json: string } | undefined;
+    if (!row) return null;
+    return JSON.parse(row.snapshot_json) as AllocationContext;
+  }
+
+  /** Re-run the deterministic validator against the stored context, at
+   * the time of the call. A plan hash proves the plan did not change; it
+   * does not prove the plan was valid or is still valid. This check also
+   * refuses a context that has gone stale, since the validator returns a
+   * stale-context violation when the call time reaches validUntil. */
+  private assertPlanValid(plan: AllocationPlan, at: string): void {
+    const context = this.getContext(plan.contextId);
+    if (!context) throw new Error(`stored context ${plan.contextId} not found, plan cannot be validated`);
+    const violations = validateAllocationPlan(plan, context, at);
+    if (violations.length > 0) {
+      throw new Error(`plan failed validation: ${violations.map((row) => `${row.code}: ${row.message}`).join("; ")}`);
+    }
+  }
+
   approvePlan(planId: string, actor: Actor, at: string): Approval {
     if (actor.role !== "owner") throw new Error("only an owner can approve an allocation plan");
     const stored = this.getPlan(planId);
     if (!stored || stored.status !== "proposed") throw new Error("only a proposed plan can be approved");
+    this.assertPlanValid(stored.plan, at);
     if (this.isStopped()) throw new Error("emergency stop is active");
     const approval = { approvalId: randomUUID(), planId, actorId: actor.actorId, planHash: stored.planHash, approvedAt: at };
     this.db.exec("BEGIN IMMEDIATE");
@@ -92,6 +113,7 @@ export class AllocationStore {
     if (this.isStopped()) throw new Error("emergency stop is active");
     const stored = this.getPlan(planId);
     if (!stored || stored.status !== "approved") throw new Error("plan must be approved and not already executing or completed");
+    this.assertPlanValid(stored.plan, at);
     const approval = this.db.prepare("SELECT plan_hash FROM plan_approvals WHERE plan_id = ?").get(planId) as { plan_hash: string } | undefined;
     if (!approval || approval.plan_hash !== stored.planHash) throw new Error("approval does not match exact plan hash");
     const execution = { executionId: randomUUID(), planId, idempotencyKey: `settle-plan-${planId}`, providerBatchId: null };
@@ -113,6 +135,21 @@ export class AllocationStore {
       this.db.prepare("UPDATE plan_executions SET provider_batch_id = ?, completed_at = ? WHERE execution_id = ?").run(providerBatchId, at, executionId);
       this.db.prepare("UPDATE allocation_plans SET status = 'succeeded' WHERE plan_id = ?").run(row.plan_id);
       this.audit(row.plan_id, "server", "execution_completed", providerBatchId, at);
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
+
+  /** Mark an execution failed, with the batch ID when one exists. A failed
+   * plan is never marked succeeded, whatever the provider said. The batch
+   * ID is still recorded, so the failure can be traced to the provider. */
+  failExecution(executionId: string, providerBatchId: string | null, reason: string, at: string): void {
+    const row = this.db.prepare("SELECT plan_id FROM plan_executions WHERE execution_id = ?").get(executionId) as { plan_id: string } | undefined;
+    if (!row) throw new Error("unknown execution");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare("UPDATE plan_executions SET provider_batch_id = ?, completed_at = ? WHERE execution_id = ?").run(providerBatchId, at, executionId);
+      this.db.prepare("UPDATE allocation_plans SET status = 'failed' WHERE plan_id = ?").run(row.plan_id);
+      this.audit(row.plan_id, "server", "execution_failed", reason, at);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }

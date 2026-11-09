@@ -62,6 +62,7 @@ test("decide gate blocks an unapproved job, mock PayPal is never called", async 
     allowlistedEmails: new Set(["freelancer@example.com"]),
     fetchFn,
     poll: false,
+    actorAuthorized: true
   });
   assert.equal(calls, 0);
   assert.equal(result.payoutBatchId, null);
@@ -83,6 +84,7 @@ test("decide gate blocks an over-cap job, mock PayPal is never called", async ()
     allowlistedEmails: new Set(["freelancer@example.com"]),
     fetchFn,
     poll: false,
+    actorAuthorized: true
   });
   assert.equal(calls, 0);
   assert.equal(result.rejected[0].status, "waiting_for_meera");
@@ -102,6 +104,7 @@ test("decide gate blocks a duplicate job, mock PayPal is never called", async ()
     allowlistedEmails: new Set(["freelancer@example.com"]),
     fetchFn,
     poll: false,
+    actorAuthorized: true
   });
   assert.equal(calls, 0);
   assert.match(result.rejected[0].decision_reason ?? "", /DuplicatePayout/);
@@ -301,6 +304,7 @@ test("payApprovedJobs: accepted jobs get the batch ID and paid status, rejected 
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com", "f2@example.com"]),
     fetchFn,
+    actorAuthorized: true
   });
   assert.equal(result.payoutBatchId, "BATCH-JOBS");
   assert.equal(result.batchStatus, "SUCCESS");
@@ -326,6 +330,7 @@ test("invoice build rejects an unapproved job, mock PayPal is never called", asy
     clientEmail: "client@example.com",
     clientId: "client-1",
     fetchFn,
+    actorAuthorized: true
   });
   assert.equal(calls, 0);
   assert.equal(result.invoiceId, null);
@@ -348,6 +353,7 @@ test("invoice build rejects a job already billed, mock PayPal is never called", 
     clientId: "client-1",
     alreadyInvoicedJobIds: new Set(["job-1"]),
     fetchFn,
+    actorAuthorized: true
   });
   assert.equal(calls, 0);
   assert.equal(result.invoiceId, null);
@@ -371,6 +377,7 @@ test("create invoice sends the right payload, items from the same approved jobs"
     clientId: "client-1",
     invoiceNumber: "settle-test-1",
     fetchFn,
+    actorAuthorized: true
   });
   assert.equal(result.invoiceId, "INV2-TEST-123");
   assert.equal(result.status, "DRAFT");
@@ -415,6 +422,7 @@ test("create invoice reads the ID from the self link when the reply has no id", 
     clientEmail: "client@example.com",
     clientId: "client-1",
     fetchFn,
+    actorAuthorized: true
   });
   assert.equal(result.invoiceId, "INV2-LINK-789");
   assert.equal(result.status, "DRAFT");
@@ -459,6 +467,7 @@ test("invoicing failure leaves the payout standing, invoice row is manual", asyn
     clientEmail: "client@example.com",
     clientId: "client-1",
     fetchFn,
+    actorAuthorized: true
   });
   assert.equal(result.manual, true);
   assert.equal(result.invoice, null);

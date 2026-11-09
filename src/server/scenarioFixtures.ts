@@ -20,7 +20,9 @@ export function allocationDemoContext(): AllocationContext {
   };
 }
 
-export function allocationCounterfactual(): AllocationContext {
-  const base = allocationDemoContext();
-  return { ...base, contextId: "demo-studio-delayed-receipt-v2", clearedFundsCents: 10000, totalCapCents: 8000 };
+/** One-condition mutation of a demo context: cleared funds fall by
+ * $50, everything else stays the same. The context ID changes too, so
+ * the mutated context is a new version, not the same one. */
+export function allocationCounterfactual(base: AllocationContext = allocationDemoContext()): AllocationContext {
+  return { ...base, contextId: `${base.contextId}-delayed-receipt`, clearedFundsCents: base.clearedFundsCents - 5000 };
 }

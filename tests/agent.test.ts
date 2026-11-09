@@ -11,6 +11,11 @@ import { createAuditLog, rowFromDecision } from "../src/server/audit.ts";
 import { ruleBasedProposal } from "../src/server/model.ts";
 import { runAgentLoop, type PayFn } from "../src/server/agent.ts";
 import { createSettleServer } from "../src/server/routes.ts";
+
+// The guarded routes need the owner token. Every test file runs in its
+// own process, so setting it here cannot leak into another file.
+process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
+const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
 import type { Job } from "../src/server/jobs.ts";
 
 type MockResponse = {
@@ -127,6 +132,7 @@ test("hallucinated amount over the per-payment cap is rejected, payout never cal
     allowlistedEmails: makeAllowlist(),
     proposer: () => [{ jobId: "job-1", recipient: "freelancer@example.com", amountCents: 99900, source: "model" as const }],
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 0);
   assert.equal(result.payoutBatchId, null);
@@ -146,6 +152,7 @@ test("hallucinated amount over the weekly cap is rejected, payout never called",
     allowlistedEmails: makeAllowlist(),
     spentInWindowCents: 140000, // $1,400 already spent this week
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 0);
   assert.equal(result.rejected[0].label, "WindowCapExceeded");
@@ -160,6 +167,7 @@ test("hallucinated recipient, not on the allowlist, is rejected, payout never ca
     allowlistedEmails: makeAllowlist(),
     proposer: () => [{ jobId: "job-1", recipient: "stranger@example.com", amountCents: 10000, source: "model" as const }],
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 0);
   assert.equal(result.rejected[0].label, "RecipientNotAllowed");
@@ -173,6 +181,7 @@ test("proposal naming a job that does not exist is rejected, payout never called
     allowlistedEmails: makeAllowlist(),
     proposer: () => [{ jobId: "job-no-such", recipient: "freelancer@example.com", amountCents: 10000, source: "model" as const }],
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 0);
   assert.equal(result.rejected[0].label, "JobNotApproved");
@@ -187,6 +196,7 @@ test("amount inside the caps but different from the approved job is still refuse
     allowlistedEmails: makeAllowlist(),
     proposer: () => [{ jobId: "job-1", recipient: "freelancer@example.com", amountCents: 15000, source: "model" as const }],
     payFn,
+    actorAuthorized: true
   });
   // The check passes on $150 as stated, but the studio approved $100,
   // so the agent refuses to pay the invented amount.
@@ -205,6 +215,7 @@ test("expired approval is rejected, payout never called", async () => {
     jobs: [job],
     allowlistedEmails: makeAllowlist(),
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 0);
   assert.equal(result.rejected[0].label, "JobNotApproved");
@@ -220,6 +231,7 @@ test("valid proposal pays, and a rejected job in the same loop is left out", asy
     allowlistedEmails: makeAllowlist(),
     audit,
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].length, 1);
@@ -242,6 +254,7 @@ test("duplicate payment for an already-paid job is rejected, payout never called
     allowlistedEmails: makeAllowlist(),
     proposer: () => [{ jobId: "job-1", recipient: "freelancer@example.com", amountCents: 10000, source: "rule-based" as const }],
     payFn,
+    actorAuthorized: true
   });
   assert.equal(calls.length, 0);
   assert.equal(result.rejected[0].label, "DuplicatePayout");
@@ -256,6 +269,7 @@ test("every decision writes an audit row, including rejections", async () => {
     jobs: [good, overCap, unlisted],
     allowlistedEmails: makeAllowlist(),
     payFn,
+    actorAuthorized: true
   });
   // One accepted row, two rejected rows, one paid row.
   assert.equal(result.auditRows.length, 4);
@@ -299,7 +313,7 @@ test("routes: owner approves a new email once, pay holds for the owner, then Pay
     const base = `http://127.0.0.1:${port}`;
     const approveRes = await fetch(`${base}/api/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...OWNER_HEADERS },
       body: JSON.stringify({ job_id: "job-1" }),
     });
     assert.equal(approveRes.status, 200);
@@ -311,7 +325,7 @@ test("routes: owner approves a new email once, pay holds for the owner, then Pay
     // pick by hand and pays nothing.
     const holdRes = await fetch(`${base}/api/pay`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...OWNER_HEADERS },
       body: JSON.stringify({}),
     });
     assert.equal(holdRes.status, 200);
@@ -330,7 +344,7 @@ test("routes: owner approves a new email once, pay holds for the owner, then Pay
 
     const payRes = await fetch(`${base}/api/pay`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...OWNER_HEADERS },
       body: JSON.stringify({ selectedJobIds: ["job-1"] }),
     });
     assert.equal(payRes.status, 200);
@@ -381,7 +395,7 @@ test("routes: approve of an unknown job returns 404, and no response carries the
     const base = `http://127.0.0.1:${port}`;
     const res = await fetch(`${base}/api/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...OWNER_HEADERS },
       body: JSON.stringify({ job_id: "job-no-such" }),
     });
     assert.equal(res.status, 404);
@@ -394,4 +408,20 @@ test("routes: approve of an unknown job returns 404, and no response carries the
   } finally {
     await app.close();
   }
+});
+
+test("loop without proved ownership refuses every proposal, payout never called", async () => {
+  const { payFn, calls } = makeStubPay();
+  const job = makeJob();
+  const result = await runAgentLoop({
+    jobs: [job],
+    allowlistedEmails: makeAllowlist(),
+    payFn,
+  });
+  assert.equal(calls.length, 0);
+  assert.equal(result.payoutBatchId, null);
+  assert.equal(result.accepted.length, 0);
+  assert.equal(result.rejected.length, 1);
+  assert.equal(result.rejected[0].label, "UnauthorisedActor");
+  assert.equal(job.status, "blocked");
 });

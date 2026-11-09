@@ -7,22 +7,24 @@
 
 The transcription proposer is no longer the only allocation capability. A new, separate decision path validates financial context, generates alternative integer-cent plans, lets an agent select only a supplied valid scenario, records rationale/uncertainty/change triggers, and exposes a delayed-receipt counterfactual in the default UI. AI absence produces no recommendation and no payment authorization.
 
-This is meaningful implementation progress, **not completion of the final acceptance standard**. The new plan store is not yet connected to PayPal execution; legacy payout routes still use the old proposer and lack application RBAC. Live model comparison, browser proof, real-user validation and Indian production feasibility remain unresolved.
+This is meaningful implementation progress, **not completion of the final acceptance standard**. The plan store is now connected to PayPal execution through an approved-plan runner that pays with the same Payouts path and marks a plan succeeded only when every item settles; approve, pay, and allocation writes now need the owner token, and approval and execution revalidate the plan against its stored context, including expiry. Live model comparison, browser proof, real-user validation and Indian production feasibility remain unresolved.
 
 ## Executed evidence
 
 | Evidence | Result |
 |---|---|
-| Full server regression | **134/134 passing** (`evidence/engineering/final-agentic-regression.tap` after final run) |
+| Full server regression | **173/173 passing** (`npm test` after the review fixes) |
 | Allocation unit/property tests | 8 passing; 250 generated contexts, all generated plans independently valid |
 | Agent orchestration | 5 passing; tool trace, no-AI behavior, scenario injection rejection, counterfactual |
-| Durable controls | 5 passing; RBAC methods, exact plan hash, idempotency, stop, restart, immutable SQL audit |
+| Durable controls | 8 passing; RBAC methods, exact plan hash, idempotency, stop, restart, immutable SQL audit, stale-plan refusal at approval and execution, mandatory-rule refusal at approval |
 | Groq selector contract | 4 passing with mocked provider; malformed/429 fail closed |
 | Allocation API integration | 3 passing; no-AI, mocked valid model, counterfactual |
-| Comparative harness | 2 passing with mock selector; does not prove model quality |
+| Comparative harness | 4 passing with mock selector; does not prove model quality |
+| Owner token | 8 passing; 401 without a token, 401 with the wrong token, 503 when unset, 200 with the correct token, on approve, pay, and allocation writes |
+| Approved-plan execution | 4 passing with mocked PayPal; all settled, one failed item, PayPal unreachable, never-approved plan denied |
 | Live model experiment | **Blocked:** `BLOCKED_NO_GROQ_CREDENTIAL`; `evidence/allocation/comparison.json` |
 
-The comparison entries labelled ai_assisted and agentic run the same selection path (the same orchestrateAllocation call with the same inputs), so the comparison shows the deterministic fallback against model-assisted selection only and cannot establish incremental agentic value. The counterfactual uses a fixed demo context, not a mutation of the caller's context.
+The comparison entries labelled ai_assisted and agentic now run different paths: ai_assisted is one model selection over the generated scenarios, returned as-is even when it breaks a rule; agentic is the full loop, which validates the pick and, on a rule break, escalates and tries the next scenario, recommending only a plan that passes the validator. The counterfactual takes a caller-supplied one-condition mutation of the input context instead of a fixed demo context.
 | Frontend build | Passing; large-bundle warning remains |
 | Browser E2E | Still blocked before page launch by Chromium shared libraries |
 | Real-user research | Not performed; `USER-RESEARCH.md` |

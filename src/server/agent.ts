@@ -47,6 +47,8 @@ export type PayFn = (opts: {
   refreshToken?: () => Promise<string>;
   fetchFn?: FetchFn;
   poll?: boolean;
+  /** True only when the caller proved ownership first. Defaults to false. */
+  actorAuthorized?: boolean;
 }) => Promise<PayJobsResult>;
 
 /**
@@ -76,9 +78,13 @@ export async function runAgentLoop(opts: {
   /** Jobs the model held for a later run, with reasons. Each gets a
       held row on the audit trail, before any chosen job is checked. */
   held?: Array<{ jobId: string; reason: string }>;
+  /** True only when the caller proved ownership first. Defaults to false,
+   * so a caller that forgets it gets every proposal refused, never paid. */
+  actorAuthorized?: boolean;
 }): Promise<AgentLoopResult> {
   const policy = opts.policy ?? DEFAULT_POLICY;
   const nowMs = opts.nowMs ?? Date.now();
+  const actorAuthorized = opts.actorAuthorized ?? false;
   const audit = opts.audit ?? createAuditLog();
   const proposals = proposePayments(opts.jobs, opts.proposer);
   const accepted: Job[] = [];
@@ -143,7 +149,7 @@ export async function runAgentLoop(opts: {
 
     const recipientAllowed =
       proposal.recipient === job.paypal_email && opts.allowlistedEmails.has(proposal.recipient);
-    const state = jobToState(job, spent, recipientAllowed);
+    const state = jobToState(job, spent, recipientAllowed, actorAuthorized);
     const decision = decide(
       policy,
       state,
@@ -222,6 +228,7 @@ export async function runAgentLoop(opts: {
     refreshToken: opts.refreshToken,
     fetchFn: opts.fetchFn,
     poll: opts.poll,
+    actorAuthorized,
   });
 
   for (const job of paid.accepted) {

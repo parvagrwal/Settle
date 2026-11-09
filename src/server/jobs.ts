@@ -43,9 +43,9 @@ export interface PayJobsResult {
   senderBatchId: string | null;
 }
 
-export function jobToState(job: Job, spentInWindowCents: number, recipientAllowed: boolean): State {
+export function jobToState(job: Job, spentInWindowCents: number, recipientAllowed: boolean, actorAuthorized: boolean): State {
   return {
-    actorAuthorized: true,
+    actorAuthorized,
     systemSuspended: false,
     jobApproved: job.approval_state === "approved",
     approvalExpiresAtMs:
@@ -67,15 +67,19 @@ export async function payApprovedJobs(opts: {
   refreshToken?: () => Promise<string>;
   fetchFn?: FetchFn;
   poll?: boolean;
+  /** True only when the caller proved ownership first. Defaults to false,
+   * so a caller that forgets it gets every job refused, never paid. */
+  actorAuthorized?: boolean;
 }): Promise<PayJobsResult> {
   const policy = opts.policy ?? DEFAULT_POLICY;
   const nowMs = opts.nowMs ?? Date.now();
+  const actorAuthorized = opts.actorAuthorized ?? false;
   let spent = opts.spentInWindowCents ?? 0;
   const accepted: Job[] = [];
   const rejected: Job[] = [];
 
   for (const job of opts.jobs) {
-    const state = jobToState(job, spent, opts.allowlistedEmails.has(job.paypal_email));
+    const state = jobToState(job, spent, opts.allowlistedEmails.has(job.paypal_email), actorAuthorized);
     const decision = decide(
       policy,
       state,

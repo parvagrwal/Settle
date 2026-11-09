@@ -24,6 +24,8 @@ import { AllocationStore } from "./allocationStore.ts";
 import { allocationCounterfactual, allocationDemoContext } from "./scenarioFixtures.ts";
 import { orchestrateAllocation } from "./decisionEngine.ts";
 import { groqScenarioSelector } from "./groqScenarioSelector.ts";
+import { requireOwner } from "./ownerAuth.ts";
+import { executeApprovedPlan } from "./planExecution.ts";
 
 export interface GridRow {
   job_id: string;
@@ -256,6 +258,8 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "POST" && path === "/api/allocation/recommend") {
+        const owner = requireOwner(req);
+        if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         const body = await readJsonBody(req);
         const context = body.counterfactual === true ? allocationCounterfactual() : allocationDemoContext();
         const selector = opts.groqApiKey ? groqScenarioSelector({ apiKey: opts.groqApiKey, fetchFn: opts.fetchFn }) : undefined;
@@ -276,7 +280,32 @@ export function createSettleServer(opts: {
         return;
       }
 
+      const executeMatch = path.match(/^\/api\/allocation\/plans\/([^/]+)\/execute$/);
+      if (req.method === "POST" && executeMatch) {
+        const owner = requireOwner(req);
+        if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        if (!opts.allocationStore) { sendJson(res, 503, { error: "allocation store is not configured" }); return; }
+        if (opts.baseUrl === undefined || opts.token === undefined) {
+          sendJson(res, 503, { error: "plan execution is not configured: sandbox credentials are missing, set them in local .env only" });
+          return;
+        }
+        const planId = decodeURIComponent(executeMatch[1]);
+        const result = await executeApprovedPlan({
+          store: opts.allocationStore,
+          planId,
+          actor: { actorId: "owner", role: "owner" },
+          baseUrl: opts.baseUrl,
+          token: opts.token,
+          refreshToken: opts.refreshToken,
+          fetchFn: opts.fetchFn,
+        });
+        sendJson(res, result.status === "succeeded" ? 200 : result.status === "denied" ? 409 : 502, result);
+        return;
+      }
+
       if (req.method === "POST" && path === "/api/approve") {
+        const owner = requireOwner(req);
+        if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         const body = await readJsonBody(req);
         const jobId = body.job_id;
         const recipient = body.recipient;
@@ -320,6 +349,11 @@ export function createSettleServer(opts: {
           });
           return;
         }
+        // Ownership is proved here, before any payment runs. The loop
+        // and the billing step below both receive that proof, so the
+        // decision check sees a real authorised actor, not a hard-coded one.
+        const owner = requireOwner(req);
+        if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         const body = await readJsonBody(req);
         // The weekly cap is enforced against what is already paid in this
         // window, not from zero, so the number on screen and the number
@@ -428,6 +462,7 @@ export function createSettleServer(opts: {
           fetchFn: opts.fetchFn,
           runBudgetCents,
           held: loopHeld,
+          actorAuthorized: true,
         });
         // Billing: the client is billed for the same jobs the payout just
         // paid, with the client email the owner set in local .env. Only a
@@ -464,6 +499,7 @@ export function createSettleServer(opts: {
               alreadyInvoicedJobIds: store.invoicedJobIds,
               refreshToken: opts.refreshToken,
               fetchFn: opts.fetchFn,
+              actorAuthorized: true,
             });
             if (!bill.manual && bill.invoice !== null) {
               invoiceId = bill.invoice.invoiceId;

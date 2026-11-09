@@ -65,6 +65,8 @@ const result = await payApprovedJobs({
   nowMs,
   allowlistedEmails: new Set([config.receiverEmail]),
   refreshToken: () => auth.getToken(),
+  // Local operator script, run by the owner by hand: ownership is proved by running it.
+  actorAuthorized: true,
 });
 
 console.log(`payout_batch_id: ${result.payoutBatchId}`);

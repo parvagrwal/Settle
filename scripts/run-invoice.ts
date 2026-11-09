@@ -79,6 +79,8 @@ const result = await billApprovedJobs({
   clientId: "client-1",
   nowMs,
   refreshToken: () => auth.getToken(),
+  // Local operator script, run by the owner by hand: ownership is proved by running it.
+  actorAuthorized: true,
 });
 
 if (result.manual || result.invoice === null) {

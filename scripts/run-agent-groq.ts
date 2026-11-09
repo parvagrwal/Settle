@@ -86,6 +86,8 @@ const paid = await runAgentLoop({
   refreshToken,
   runBudgetCents: 200,
   held: wired.held,
+  // Local operator script, run by the owner by hand: ownership is proved by running it.
+  actorAuthorized: true,
 });
 out(`Part 1: accepted ${paid.accepted.length}, rejected ${paid.rejected.length}.`);
 out(`AGENT_LOOP_GROQ: ${paid.payoutBatchId !== null ? "PAID" : "NOTHING_PAID"} batch ${paid.payoutBatchId ?? "none"}, status ${paid.batchStatus ?? "none"}.`);
@@ -106,6 +108,8 @@ const refused = await runAgentLoop({
   baseUrl: config.baseUrl,
   token,
   refreshToken,
+  // Local operator script, run by the owner by hand: ownership is proved by running it.
+  actorAuthorized: true,
 });
 out(`Part 2: invented $999 proposal rejected as ${refused.rejected[0]?.label ?? "not rejected"}, payout batch ${refused.payoutBatchId ?? "none"}.`);
 out(`  settle-groq-3: ${freshJob.status}, reason ${freshJob.decision_reason ?? "none"}.`);

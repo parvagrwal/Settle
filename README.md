@@ -2,11 +2,11 @@
 
 > **2026-11-09 transaction-intelligence update:** the default dashboard now reads a durable ledger of PayPal-postback-verified events, with AG Grid operations, a separate AG Studio analytical view, and evidence-grounded investigation. Configure `PAYPAL_WEBHOOK_ID` and `SETTLE_DB_PATH` as shown in `.env.example`. With no verified events, the dashboard is intentionally empty.
 >
-> **Proof status:** 155 Node tests pass and the frontend production build passes. Browser E2E is blocked by missing Chromium shared libraries; live webhook and browser proof has not been performed. Read [the Phase-0 diagnosis](docs/TRANSACTION-TECHNICAL-DIAGNOSIS.md) and [implementation/evidence matrix](docs/IMPLEMENTATION-EVIDENCE.md) before interpreting older demonstration claims below.
+> **Proof status:** 173 Node tests pass and the frontend production build passes. Browser E2E is blocked by missing Chromium shared libraries; live webhook and browser proof has not been performed. Read [the Phase-0 diagnosis](docs/TRANSACTION-TECHNICAL-DIAGNOSIS.md) and [implementation/evidence matrix](docs/IMPLEMENTATION-EVIDENCE.md) before interpreting older demonstration claims below.
 >
 > **2026-11-09 agentic-allocation update:** Settle now coordinates competing payment obligations through validated allocation scenarios, contextual agent selection, counterfactual re-planning, owner-bound approvals and idempotent execution controls. The default planner uses a clearly labelled illustrative scenario and never authorizes payment. Verified PayPal events remain available in the transaction view.
 >
-> **Proof status:** 155 Node tests pass and the frontend production build passes. Live AI comparison is blocked without a Groq credential; browser E2E is blocked by missing Chromium libraries; live webhook and browser proof has not been performed. The comparison entries labelled ai_assisted and agentic run the same selection path, so it cannot show incremental agentic value; the counterfactual uses a fixed demo context. Read the [forensic diagnosis](docs/AGENTIC-ALLOCATION-DIAGNOSIS.md), [implementation status](docs/AGENTIC-IMPLEMENTATION.md), [India feasibility screen](docs/INDIA-FEASIBILITY.md) and [unvalidated user-research status](docs/USER-RESEARCH.md). Older receipt claims below do not establish allocation intelligence.
+> **Proof status:** 173 Node tests pass and the frontend production build passes. Live AI comparison is blocked without a Groq credential; browser E2E is blocked by missing Chromium libraries; live webhook and browser proof has not been performed. The model-assisted path is one selection over the scenarios; the agent path validates the pick, and on a rule break escalates and tries the next scenario, so the two can now be compared; the counterfactual takes a one-condition change to the input. Approve, pay, and allocation writes now need the owner token, and an approved plan can be paid through PayPal and is marked succeeded only when every item settles. Read the [forensic diagnosis](docs/AGENTIC-ALLOCATION-DIAGNOSIS.md), [implementation status](docs/AGENTIC-IMPLEMENTATION.md), [India feasibility screen](docs/INDIA-FEASIBILITY.md) and [unvalidated user-research status](docs/USER-RESEARCH.md). Older receipt claims below do not establish allocation intelligence.
 
 An agent reads approved work, decides who gets paid how much, and pays them with PayPal, inside a weekly cap the owner sets.
 
@@ -33,7 +33,7 @@ These are real sandbox receipts from live test runs, not mock data:
 | Practice run 5, three $1.00 payments | `GB736QR4BZJUG` | SUCCESS |
 | Client invoice sent, $2.00 total | `INV2-QZ27-GV5H-DM37-T8TH` | SENT |
 
-Twenty-nine $1.00 test payments in total, $29.00, all sandbox test money. The server test suite passes 155 checks, 0 fail (`npm test`).
+Twenty-nine $1.00 test payments in total, $29.00, all sandbox test money. The server test suite passes 173 checks, 0 fail (`npm test`).
 
 ## How it works
 
@@ -93,9 +93,11 @@ No values are in this repo. You make every key yourself, and every key stays in 
 
 **Groq key (for the model allocator).** Go to [console.groq.com](https://console.groq.com), sign in, open API Keys, then Create API Key. Put it in `.env` as `GROQ_API_KEY`. Free tier, no card needed. Without it, the dashboard still works and a Pay click holds for the owner to pick the jobs by hand.
 
+**Owner token (for approve, pay, and allocation writes).** Choose a long random value and put it in `.env` as `SETTLE_OWNER_TOKEN`. You can make one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Never commit it, never paste it anywhere. The dashboard asks for it once per session at the top of the page and keeps it in that browser tab only; approve and pay stay off until it is entered. Without it set, those routes refuse with 503; a wrong token is 401.
+
 ## Try the flow
 
-1. Open the dashboard. You see 8 rows: 4 paid, 2 waiting at $1.00, 1 over the cap at $250.00, 1 waiting for approval.
+1. Open the dashboard. You see 8 rows: 4 paid, 2 waiting at $1.00, 1 over the cap at $250.00, 1 waiting for approval. First enter the owner token at the top of the page; approve and pay stay off until it is entered.
 2. Click **Approve demo-approve-1**. The running weekly total and the cap left update.
 3. Set the run budget for this run (it starts at the weekly cap left). Click **Pay approved jobs**. The model chooses which waiting jobs fit the budget, soonest due and highest priority first, the chosen jobs are paid live in sandbox test money, and the result screen shows the payout batch, its status, who chose the jobs, and which jobs the model held with reasons.
 4. The over-cap job stays held, with its reason and the $50.00 over the cap on screen.
@@ -106,7 +108,7 @@ No values are in this repo. You make every key yourself, and every key stays in 
 npm test
 ```
 
-The server suite covers the decision rules (all 256 combinations of the eight rules), the payout and invoice calls, the audit trail, the independent check from PayPal reporting, and the dashboard server. No PayPal credentials are needed; the tests use mock replies.
+The server suite covers the decision rules (all 256 combinations of the eight rules), the payout and invoice calls, the audit trail, the independent check from PayPal reporting, and the dashboard server. It also covers the owner token (401 without one, 401 with the wrong one, 503 when unset), approved-plan execution with mocked PayPal, stale-plan refusal at approval and execution, and the comparison harness. No PayPal credentials are needed; the tests use mock replies.
 
 ## Cost
 

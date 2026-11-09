@@ -121,6 +121,35 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Owner token, kept in this browser tab only (sessionStorage). It is
+ * asked for once per session, sent on the approve, pay, and
+ * allocation-write calls, and never baked into the bundle or saved to
+ * disk. Empty means the owner has not entered it yet. */
+const OWNER_TOKEN_KEY = "settle-owner-token";
+
+export function ownerToken(): string | null {
+  try {
+    return sessionStorage.getItem(OWNER_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setOwnerToken(token: string): void {
+  try {
+    if (token === "") sessionStorage.removeItem(OWNER_TOKEN_KEY);
+    else sessionStorage.setItem(OWNER_TOKEN_KEY, token);
+  } catch {
+    // Storage unavailable: the token stays unset and the guarded
+    // buttons stay disabled.
+  }
+}
+
+export function ownerHeaders(): Record<string, string> {
+  const token = ownerToken();
+  return token ? { "x-settle-owner-token": token } : {};
+}
+
 export async function fetchGrid(): Promise<GridRow[]> {
   const body = await getJson<{ rows: GridRow[] }>("/api/grid");
   return body.rows;
@@ -143,7 +172,7 @@ export async function fetchCaps(): Promise<Caps> {
 export async function approveJob(jobId: string): Promise<JobRow> {
   const res = await fetch("/api/approve", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...ownerHeaders() },
     body: JSON.stringify({ job_id: jobId }),
   });
   if (!res.ok) {
@@ -156,7 +185,7 @@ export async function approveJob(jobId: string): Promise<JobRow> {
 export async function payJobs(opts: { runBudgetCents?: number; selectedJobIds?: string[] } = {}): Promise<PayResult> {
   const res = await fetch("/api/pay", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...ownerHeaders() },
     body: JSON.stringify({
       ...(opts.runBudgetCents !== undefined ? { runBudgetCents: opts.runBudgetCents } : {}),
       ...(opts.selectedJobIds !== undefined ? { selectedJobIds: opts.selectedJobIds } : {}),

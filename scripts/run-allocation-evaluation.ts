@@ -22,7 +22,14 @@ if (!process.env.GROQ_API_KEY) {
   };
 } else {
   try {
-    report = { status: "LIVE_MODEL_EVALUATION", ...(await evaluateThreeSystems(context, groqScenarioSelector({ apiKey: process.env.GROQ_API_KEY }), true)) };
+    // The counterfactual changes exactly one condition: cleared funds
+    // fall by $50, everything else stays the same.
+    const delayedReceipt = (input: ReturnType<typeof allocationDemoContext>) => ({
+      ...input,
+      contextId: `${input.contextId}-delayed-receipt`,
+      clearedFundsCents: input.clearedFundsCents - 5000,
+    });
+    report = { status: "LIVE_MODEL_EVALUATION", ...(await evaluateThreeSystems(context, groqScenarioSelector({ apiKey: process.env.GROQ_API_KEY }), true, delayedReceipt)) };
   } catch (error) {
     report = { status: "LIVE_MODEL_EVALUATION_FAILED", modelResultsClaimed: false, error: (error as Error).message };
   }

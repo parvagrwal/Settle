@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-community";
+import { ownerHeaders } from "./api.ts";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -19,7 +20,8 @@ export default function AllocationPlanner() {
   const run = useCallback(async (counterfactual: boolean) => {
     setLoading(true); setError("");
     try {
-      const response = await fetch("/api/allocation/recommend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ counterfactual }) });
+      const response = await fetch("/api/allocation/recommend", { method: "POST", headers: { "Content-Type": "application/json", ...ownerHeaders() }, body: JSON.stringify({ counterfactual }) });
+      if (response.status === 401) throw new Error("owner token needed: enter it at the top of the page, then try again");
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const body = await response.json() as Result;
       setResult(body); setContext(body.context);

@@ -93,6 +93,9 @@ const actualPort = await app.listen(port);
 console.log(`Settle dashboard: http://localhost:${actualPort}/`);
 console.log(`Paying is ${token !== undefined ? "on (sandbox)" : "off (no PayPal credentials)"}.`);
 console.log(
+  `Owner token is ${(process.env.SETTLE_OWNER_TOKEN ?? "").trim() !== "" ? "configured" : "NOT configured, approve and pay return 503 until SETTLE_OWNER_TOKEN is set in local .env"}.`,
+);
+console.log(
   `Invoicing is ${clientEmail !== undefined ? "on (client email set in local .env)" : "off (no client email in local .env, payouts still work)"}.`,
 );
 console.log("Sandbox only. Test money, no real money moves.");

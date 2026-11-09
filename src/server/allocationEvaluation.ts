@@ -39,23 +39,55 @@ function metrics(plan: AllocationPlan | null, context: AllocationContext, interv
   };
 }
 
-export async function evaluateThreeSystems(context: AllocationContext, selector: ScenarioSelector, includeCounterfactual = false) {
+export async function evaluateThreeSystems(
+  context: AllocationContext,
+  selector: ScenarioSelector,
+  includeCounterfactual = false,
+  /** One-condition mutation of the input context for the counterfactual.
+   * Without it, the counterfactual falls back to the fixed demo mutation. */
+  counterfactualMutate?: (input: AllocationContext) => AllocationContext,
+) {
   const scenarios = generateAllocationScenarios(context);
   const fallbackStart = Date.now();
   const fallback = scenarios.find((plan) => plan.strategy === "deadline-first") ?? null;
   const systems: SystemResult[] = [{ system: "deterministic_fallback", plan: fallback, metrics: metrics(fallback, context, 0), latencyMs: Date.now() - fallbackStart, reason: fallback?.rationale ?? "No plan" }];
-  for (const system of ["ai_assisted", "agentic"] as const) {
-    const started = Date.now();
-    const result = await orchestrateAllocation({ context, selector, now: context.capturedAt });
-    const plan = result.recommendation?.selectedPlan ?? null;
-    systems.push({ system, plan, metrics: metrics(plan, context, result.escalations.length), latencyMs: Date.now() - started, reason: result.recommendation?.reason ?? result.escalations.join(" ") });
+  // ai_assisted is one model selection over the generated scenarios, and
+  // nothing else: no orchestration loop, no validation retry, no
+  // escalation. The pick is returned as-is, even when it breaks a rule,
+  // and the metrics say so. That is what makes it different from the
+  // agentic path below, which validates and escalates instead.
+  const assistedStart = Date.now();
+  let assistedPlan: AllocationPlan | null = null;
+  let assistedReason = "";
+  let assistedEscalations: string[] = [];
+  try {
+    const selection = await selector({ context, scenarios });
+    assistedPlan = scenarios.find((plan) => plan.planId === selection.scenarioId) ?? null;
+    assistedReason = selection.reason;
+    if (!assistedPlan) assistedEscalations = [`${selection.scenarioId} is not a supplied scenario. No payment was authorized.`];
+  } catch (error) {
+    assistedEscalations = [`AI-assisted selection failed: ${(error as Error).message}. No payment was authorized.`];
   }
+  systems.push({
+    system: "ai_assisted",
+    plan: assistedPlan,
+    metrics: metrics(assistedPlan, context, assistedEscalations.length),
+    latencyMs: Date.now() - assistedStart,
+    reason: assistedPlan ? assistedReason : assistedEscalations.join(" "),
+  });
+  // agentic is the full loop: generate, select, validate, and on a rule
+  // break escalate and try the next scenario, auditing each step. It
+  // recommends only a plan that passes the independent validator.
+  const agenticStart = Date.now();
+  const result = await orchestrateAllocation({ context, selector, now: context.capturedAt });
+  const agenticPlan = result.recommendation?.selectedPlan ?? null;
+  systems.push({ system: "agentic", plan: agenticPlan, metrics: metrics(agenticPlan, context, result.escalations.length), latencyMs: Date.now() - agenticStart, reason: result.recommendation?.reason ?? result.escalations.join(" ") });
   let counterfactual: null | {
     originalContext: AllocationContext; modifiedContext: AllocationContext;
     originalPlanId: string | null; newPlanId: string | null; reason: string; constraintValid: boolean;
   } = null;
   if (includeCounterfactual) {
-    const modifiedContext = allocationCounterfactual();
+    const modifiedContext = counterfactualMutate ? counterfactualMutate(context) : allocationCounterfactual();
     const changed = await orchestrateAllocation({ context: modifiedContext, selector, now: modifiedContext.capturedAt });
     counterfactual = {
       originalContext: context, modifiedContext,

@@ -17,6 +17,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createSettleServer } from "../src/server/routes.ts";
+
+// The guarded routes need the owner token. Every test file runs in its
+// own process, so setting it here cannot leak into another file.
+process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
+const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
 import { seedJobs } from "../src/server/seed.ts";
 import { billApprovedJobs } from "../src/server/invoicing.ts";
 import type { Job } from "../src/server/jobs.ts";
@@ -126,7 +131,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
 }
 
 async function payOnce(port: number): Promise<PayResponse> {
-  const res = await fetch(`http://127.0.0.1:${port}/api/pay`, { method: "POST" });
+  const res = await fetch(`http://127.0.0.1:${port}/api/pay`, { method: "POST", headers: { ...OWNER_HEADERS } });
   assert.equal(res.status, 200);
   return (await res.json()) as PayResponse;
 }
@@ -227,6 +232,7 @@ test("billing the same jobs twice rejects the second bill as already billed", as
     clientId: "client-1",
     alreadyInvoicedJobIds: invoiced,
     fetchFn: mock.fetchFn,
+    actorAuthorized: true
   });
   assert.equal(first.manual, false);
   assert.equal(first.invoice?.invoiceId, "INV2-TEST-001");
@@ -241,6 +247,7 @@ test("billing the same jobs twice rejects the second bill as already billed", as
     clientId: "client-1",
     alreadyInvoicedJobIds: invoiced,
     fetchFn: mock.fetchFn,
+    actorAuthorized: true
   });
   assert.equal(second.manual, true);
   assert.equal(second.invoice, null);

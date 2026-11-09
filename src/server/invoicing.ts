@@ -51,9 +51,9 @@ export interface BillResult {
   error: string | null;
 }
 
-function invoiceState(job: Job, billedSoFarCents: number, alreadyBilled: boolean, policy: Policy): State {
+function invoiceState(job: Job, billedSoFarCents: number, alreadyBilled: boolean, policy: Policy, actorAuthorized: boolean): State {
   return {
-    actorAuthorized: true,
+    actorAuthorized,
     systemSuspended: false,
     jobApproved: job.approval_state === "approved",
     approvalExpiresAtMs:
@@ -126,16 +126,20 @@ export async function createInvoice(opts: {
   requestId?: string;
   refreshToken?: () => Promise<string>;
   fetchFn?: FetchFn;
+  /** True only when the caller proved ownership first. Defaults to false,
+   * so a caller that forgets it gets every job refused, never billed. */
+  actorAuthorized?: boolean;
 }): Promise<InvoiceResult> {
   const policy = opts.policy ?? DEFAULT_POLICY;
   const nowMs = opts.nowMs ?? Date.now();
+  const actorAuthorized = opts.actorAuthorized ?? false;
   const alreadyInvoiced = opts.alreadyInvoicedJobIds ?? new Set<string>();
   const accepted: Job[] = [];
   const rejected: InvoiceRejection[] = [];
   let billedSoFarCents = 0;
 
   for (const job of opts.jobs) {
-    const state = invoiceState(job, billedSoFarCents, alreadyInvoiced.has(job.job_id), policy);
+    const state = invoiceState(job, billedSoFarCents, alreadyInvoiced.has(job.job_id), policy, actorAuthorized);
     const decision = decide(
       policy,
       state,
@@ -252,6 +256,8 @@ export async function billApprovedJobs(opts: {
   alreadyInvoicedJobIds?: Set<string>;
   refreshToken?: () => Promise<string>;
   fetchFn?: FetchFn;
+  /** True only when the caller proved ownership first. Defaults to false. */
+  actorAuthorized?: boolean;
 }): Promise<BillResult> {
   try {
     const created = await createInvoice({
@@ -265,6 +271,7 @@ export async function billApprovedJobs(opts: {
       alreadyInvoicedJobIds: opts.alreadyInvoicedJobIds,
       refreshToken: opts.refreshToken,
       fetchFn: opts.fetchFn,
+      actorAuthorized: opts.actorAuthorized ?? false,
     });
     if (created.invoiceId === null) {
       return {

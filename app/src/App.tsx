@@ -12,7 +12,9 @@ import {
   fetchCaps,
   fetchGrid,
   fetchJobs,
+  ownerToken,
   payJobs,
+  setOwnerToken,
   toDashboardRow,
   type AuditRow,
   type Caps,
@@ -47,6 +49,22 @@ export default function App() {
   const [holdCandidates, setHoldCandidates] = useState<string[]>([]);
   const [holdReason, setHoldReason] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Owner token for this tab only. Asked once per session, kept in
+   * session storage, never saved to disk or baked into the page. */
+  const [ownerTokenInput, setOwnerTokenInput] = useState("");
+  const [ownerTokenSet, setOwnerTokenSet] = useState(() => ownerToken() !== null);
+
+  function saveOwnerToken() {
+    setOwnerToken(ownerTokenInput);
+    setOwnerTokenSet(ownerTokenInput !== "");
+    setOwnerTokenInput("");
+  }
+
+  function clearOwnerToken() {
+    setOwnerToken("");
+    setOwnerTokenSet(false);
+    setOwnerTokenInput("");
+  }
 
   const loadAll = useCallback(async () => {
     const [gridRows, jobRows, auditRows, capsBody] = await Promise.all([
@@ -191,6 +209,36 @@ export default function App() {
           Sender: US sandbox test account, not a real Indian studio. Worst-case exposure: $1,500 per
           week.
         </p>
+        <p className="panel-line">
+          Owner token:{" "}
+          {ownerTokenSet ? (
+            <>
+              entered for this tab.{" "}
+              <button type="button" className="button button-secondary" onClick={clearOwnerToken}>
+                Clear it
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="password"
+                value={ownerTokenInput}
+                onChange={(e) => setOwnerTokenInput(e.target.value)}
+                placeholder="Enter the owner token"
+                aria-label="Owner token"
+              />{" "}
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={saveOwnerToken}
+                disabled={ownerTokenInput === ""}
+              >
+                Save for this tab
+              </button>{" "}
+              Approve and pay stay off until it is entered. It lives in this tab only.
+            </>
+          )}
+        </p>
       </header>
 
       {view === "landing" && (
@@ -284,6 +332,7 @@ export default function App() {
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             onPaySelected={handlePaySelected}
+            ownerTokenSet={ownerTokenSet}
           />
 
           <StudioDashboard rows={rows} />

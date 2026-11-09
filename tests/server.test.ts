@@ -10,6 +10,11 @@ import { join } from "node:path";
 import { createSettleServer } from "../src/server/routes.ts";
 import { seedJobs } from "../src/server/seed.ts";
 
+// The guarded routes need the owner token. Every test file runs in its
+// own process, so setting it here cannot leak into another file.
+process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
+const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
+
 type MockResponse = {
   status: number;
   ok: boolean;
@@ -101,7 +106,7 @@ test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the
     // pick by hand and pays nothing.
     const holdRes = await fetch(`${base}/api/pay`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...OWNER_HEADERS },
       body: JSON.stringify({}),
     });
     assert.equal(holdRes.status, 200);
@@ -121,7 +126,7 @@ test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the
 
     const payRes = await fetch(`${base}/api/pay`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...OWNER_HEADERS },
       body: JSON.stringify({ selectedJobIds: ["demo-waiting-1", "demo-waiting-2"] }),
     });
     assert.equal(payRes.status, 200);

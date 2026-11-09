@@ -96,7 +96,9 @@ function checkProposal(proposal: Proposal & { reason: string }): CheckedProposal
     };
   }
   const recipientAllowed = proposal.recipient === job.paypal_email && allowlisted.has(proposal.recipient);
-  const state = jobToState(job, 0, recipientAllowed);
+  // Local spike script, run by the owner by hand to measure proposal
+  // quality: ownership is proved by running it. It never pays.
+  const state = jobToState(job, 0, recipientAllowed, true);
   const decision = decide(
     DEFAULT_POLICY,
     state,
