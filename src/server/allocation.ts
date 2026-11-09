@@ -43,7 +43,7 @@ export interface AllocationPlan {
 }
 
 export interface AllocationViolation {
-  code: "INVALID_CONTEXT" | "STALE_CONTEXT" | "CONTEXT_MISMATCH" | "UNKNOWN_OBLIGATION" | "DUPLICATE_OBLIGATION" | "INVALID_AMOUNT" | "ENTITLEMENT_MISMATCH" | "PARTIAL_NOT_ALLOWED" | "PER_PAYMENT_CAP_EXCEEDED" | "BUDGET_EXCEEDED";
+  code: "INVALID_CONTEXT" | "STALE_CONTEXT" | "CONTEXT_MISMATCH" | "UNKNOWN_OBLIGATION" | "DUPLICATE_OBLIGATION" | "INVALID_AMOUNT" | "ENTITLEMENT_MISMATCH" | "PARTIAL_NOT_ALLOWED" | "PER_PAYMENT_CAP_EXCEEDED" | "BUDGET_EXCEEDED" | "MANDATORY_UNFUNDED";
   obligationId?: string;
   message: string;
 }
@@ -143,5 +143,26 @@ export function validateAllocationPlan(plan: AllocationPlan, context: Allocation
   }
   if (total > calculateDiscretionaryBudget(context)) errors.push({ code: "BUDGET_EXCEEDED", message: "allocation exceeds validated discretionary budget" });
   if (total !== plan.totalAllocatedCents) errors.push({ code: "INVALID_AMOUNT", message: "plan total does not equal allocation sum" });
+  // An overdue mandatory obligation must be fully funded before any
+  // discretionary spend. A plan that funds discretionary work while an
+  // overdue mandatory obligation is unfunded, or only partly funded, is
+  // refused and the funding gap escalates instead.
+  const allocatedById = new Map(plan.allocations.map((line) => [line.obligationId, line.amountCents]));
+  const hasDiscretionarySpend = plan.allocations.some((line) => {
+    const obligation = byId.get(line.obligationId);
+    return obligation !== undefined && !obligation.mandatory && line.amountCents > 0;
+  });
+  if (hasDiscretionarySpend) {
+    for (const obligation of context.obligations) {
+      if (!obligation.mandatory) continue;
+      if (obligation.dueAt > at) continue;
+      const owed = remaining(obligation);
+      if (owed === 0) continue;
+      const funded = allocatedById.get(obligation.obligationId) ?? 0;
+      if (funded < owed) {
+        errors.push({ code: "MANDATORY_UNFUNDED", obligationId: obligation.obligationId, message: `overdue mandatory obligation ${obligation.obligationId} must be fully funded before any discretionary spend` });
+      }
+    }
+  }
   return errors;
 }

@@ -2,11 +2,11 @@
 
 > **2026-11-09 transaction-intelligence update:** the default dashboard now reads a durable ledger of PayPal-postback-verified events, with AG Grid operations, a separate AG Studio analytical view, and evidence-grounded investigation. Configure `PAYPAL_WEBHOOK_ID` and `SETTLE_DB_PATH` as shown in `.env.example`. With no verified events, the dashboard is intentionally empty.
 >
-> **Proof status:** 150 Node tests pass and the frontend production build passes. Browser E2E is blocked by missing Chromium shared libraries; live webhook and browser proof has not been performed. Read [the Phase-0 diagnosis](docs/TRANSACTION-TECHNICAL-DIAGNOSIS.md) and [implementation/evidence matrix](docs/IMPLEMENTATION-EVIDENCE.md) before interpreting older demonstration claims below.
+> **Proof status:** 155 Node tests pass and the frontend production build passes. Browser E2E is blocked by missing Chromium shared libraries; live webhook and browser proof has not been performed. Read [the Phase-0 diagnosis](docs/TRANSACTION-TECHNICAL-DIAGNOSIS.md) and [implementation/evidence matrix](docs/IMPLEMENTATION-EVIDENCE.md) before interpreting older demonstration claims below.
 >
 > **2026-11-09 agentic-allocation update:** Settle now coordinates competing payment obligations through validated allocation scenarios, contextual agent selection, counterfactual re-planning, owner-bound approvals and idempotent execution controls. The default planner uses a clearly labelled illustrative scenario and never authorizes payment. Verified PayPal events remain available in the transaction view.
 >
-> **Proof status:** 150 Node tests pass and the frontend production build passes. Live AI comparison is blocked without a Groq credential; browser E2E is blocked by missing Chromium libraries; live webhook and browser proof has not been performed. Read the [forensic diagnosis](docs/AGENTIC-ALLOCATION-DIAGNOSIS.md), [implementation status](docs/AGENTIC-IMPLEMENTATION.md), [India feasibility screen](docs/INDIA-FEASIBILITY.md) and [unvalidated user-research status](docs/USER-RESEARCH.md). Older receipt claims below do not establish allocation intelligence.
+> **Proof status:** 155 Node tests pass and the frontend production build passes. Live AI comparison is blocked without a Groq credential; browser E2E is blocked by missing Chromium libraries; live webhook and browser proof has not been performed. The comparison entries labelled ai_assisted and agentic run the same selection path, so it cannot show incremental agentic value; the counterfactual uses a fixed demo context. Read the [forensic diagnosis](docs/AGENTIC-ALLOCATION-DIAGNOSIS.md), [implementation status](docs/AGENTIC-IMPLEMENTATION.md), [India feasibility screen](docs/INDIA-FEASIBILITY.md) and [unvalidated user-research status](docs/USER-RESEARCH.md). Older receipt claims below do not establish allocation intelligence.
 
 An agent reads approved work, decides who gets paid how much, and pays them with PayPal, inside a weekly cap the owner sets.
 
@@ -33,7 +33,7 @@ These are real sandbox receipts from live test runs, not mock data:
 | Practice run 5, three $1.00 payments | `GB736QR4BZJUG` | SUCCESS |
 | Client invoice sent, $2.00 total | `INV2-QZ27-GV5H-DM37-T8TH` | SENT |
 
-Twenty-nine $1.00 test payments in total, $29.00, all sandbox test money. The server test suite passes 150 checks, 0 fail (`npm test`).
+Twenty-nine $1.00 test payments in total, $29.00, all sandbox test money. The server test suite passes 155 checks, 0 fail (`npm test`).
 
 ## How it works
 

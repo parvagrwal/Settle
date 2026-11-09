@@ -21,6 +21,8 @@ This is meaningful implementation progress, **not completion of the final accept
 | Allocation API integration | 3 passing; no-AI, mocked valid model, counterfactual |
 | Comparative harness | 2 passing with mock selector; does not prove model quality |
 | Live model experiment | **Blocked:** `BLOCKED_NO_GROQ_CREDENTIAL`; `evidence/allocation/comparison.json` |
+
+The comparison entries labelled ai_assisted and agentic run the same selection path (the same orchestrateAllocation call with the same inputs), so the comparison shows the deterministic fallback against model-assisted selection only and cannot establish incremental agentic value. The counterfactual uses a fixed demo context, not a mutation of the caller's context.
 | Frontend build | Passing; large-bundle warning remains |
 | Browser E2E | Still blocked before page launch by Chromium shared libraries |
 | Real-user research | Not performed; `USER-RESEARCH.md` |

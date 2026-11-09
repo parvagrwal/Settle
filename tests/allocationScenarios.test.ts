@@ -5,6 +5,7 @@ import {
   generateAllocationScenarios,
   validateAllocationPlan,
   type AllocationContext,
+  type AllocationPlan,
   type Obligation,
 } from "../src/server/allocation.ts";
 
@@ -101,4 +102,68 @@ test("one-condition counterfactual changes the feasible allocation, not the rule
   const after = generateAllocationScenarios(delayed).find((plan) => plan.strategy === "deadline-first");
   assert.notDeepEqual(before?.allocations, after?.allocations);
   assert.deepEqual(validateAllocationPlan(after!, delayed, delayed.capturedAt), []);
+});
+
+const mandatoryContext: AllocationContext = {
+  contextId: "mandatory-ctx",
+  capturedAt: "2026-11-09T10:00:00Z",
+  validUntil: "2026-11-09T11:00:00Z",
+  clearedFundsCents: 10000,
+  reserveCents: 0,
+  perPaymentCapCents: 20000,
+  totalCapCents: 10000,
+  committedCents: 0,
+  obligations: [
+    { obligationId: "mandatory-rent", recipient: "owner@example.test", currency: "USD", owedCents: 10000, settledCents: 0, dueAt: "2026-11-08T00:00:00Z", mandatory: true, partialAllowed: false, priority: "operational", note: "Rent" },
+    { obligationId: "discretionary", recipient: "artist@example.test", currency: "USD", owedCents: 10000, settledCents: 0, dueAt: "2026-11-15T00:00:00Z", mandatory: false, partialAllowed: true, priority: "normal", note: "Optional" },
+  ],
+};
+
+function mandatoryPlan(allocations: { obligationId: string; amountCents: number; residualCents: number }[]): AllocationPlan {
+  return {
+    planId: "mandatory-plan",
+    contextId: "mandatory-ctx",
+    strategy: "deadline-first",
+    allocations,
+    totalAllocatedCents: allocations.reduce((sum, row) => sum + row.amountCents, 0),
+    unfundedObligationIds: [],
+    rationale: "mandatory rule regression",
+  };
+}
+
+test("overdue mandatory obligation left unfunded while discretionary spend is funded is invalid", () => {
+  const plan = mandatoryPlan([{ obligationId: "discretionary", amountCents: 10000, residualCents: 0 }]);
+  const errors = validateAllocationPlan(plan, mandatoryContext, "2026-11-09T10:30:00Z");
+  assert.deepEqual(errors.map((error) => error.code), ["MANDATORY_UNFUNDED"]);
+  assert.equal(errors[0].obligationId, "mandatory-rent");
+});
+
+test("overdue mandatory obligation fully funded alongside discretionary spend is valid on this rule", () => {
+  const funded = { ...mandatoryContext, clearedFundsCents: 20000, totalCapCents: 20000 };
+  const plan = mandatoryPlan([
+    { obligationId: "mandatory-rent", amountCents: 10000, residualCents: 0 },
+    { obligationId: "discretionary", amountCents: 10000, residualCents: 0 },
+  ]);
+  assert.deepEqual(validateAllocationPlan(plan, funded, "2026-11-09T10:30:00Z"), []);
+});
+
+test("mandatory obligation not yet due and unfunded does not block discretionary spend", () => {
+  const future = { ...mandatoryContext, obligations: mandatoryContext.obligations.map((row) => row.obligationId === "mandatory-rent" ? { ...row, dueAt: "2026-11-15T00:00:00Z" } : row) };
+  const plan = mandatoryPlan([{ obligationId: "discretionary", amountCents: 10000, residualCents: 0 }]);
+  assert.deepEqual(validateAllocationPlan(plan, future, "2026-11-09T10:30:00Z"), []);
+});
+
+test("partially funded overdue mandatory obligation still blocks discretionary spend", () => {
+  const partial = { ...mandatoryContext, obligations: mandatoryContext.obligations.map((row) => row.obligationId === "mandatory-rent" ? { ...row, partialAllowed: true } : row) };
+  const plan = mandatoryPlan([
+    { obligationId: "mandatory-rent", amountCents: 5000, residualCents: 5000 },
+    { obligationId: "discretionary", amountCents: 5000, residualCents: 5000 },
+  ]);
+  assert.deepEqual(validateAllocationPlan(plan, partial, "2026-11-09T10:30:00Z").map((error) => error.code), ["MANDATORY_UNFUNDED"]);
+});
+
+test("already settled overdue mandatory obligation does not block discretionary spend", () => {
+  const settled = { ...mandatoryContext, obligations: mandatoryContext.obligations.map((row) => row.obligationId === "mandatory-rent" ? { ...row, settledCents: 10000 } : row) };
+  const plan = mandatoryPlan([{ obligationId: "discretionary", amountCents: 10000, residualCents: 0 }]);
+  assert.deepEqual(validateAllocationPlan(plan, settled, "2026-11-09T10:30:00Z"), []);
 });
