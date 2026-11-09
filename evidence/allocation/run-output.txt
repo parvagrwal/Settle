@@ -1,0 +1,27 @@
+{
+  "status": "BLOCKED_NO_GROQ_CREDENTIAL",
+  "modelResultsClaimed": false,
+  "deterministicFallback": {
+    "planId": "demo-studio-v1:deadline-first",
+    "contextId": "demo-studio-v1",
+    "strategy": "deadline-first",
+    "allocations": [
+      {
+        "obligationId": "brand-refresh",
+        "amountCents": 8000,
+        "residualCents": 0
+      },
+      {
+        "obligationId": "urgent-retouch",
+        "amountCents": 5000,
+        "residualCents": 0
+      }
+    ],
+    "totalAllocatedCents": 13000,
+    "unfundedObligationIds": [
+      "studio-software"
+    ],
+    "rationale": "Protects the earliest deadlines first; later obligations remain explicitly unfunded."
+  },
+  "message": "No live AI-assisted or agentic comparison was run. Mock-selector unit tests verify the harness only."
+}

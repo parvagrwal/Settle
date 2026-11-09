@@ -26,8 +26,9 @@ import { sampleRows, sampleResult } from "./data/sample.ts";
 import StudioDashboard from "./StudioDashboard.tsx";
 import ApprovalPanel from "./ApprovalPanel.tsx";
 import TransactionsDashboard from "./TransactionsDashboard.tsx";
+import AllocationPlanner from "./AllocationPlanner.tsx";
 
-type View = "landing" | "dashboard" | "result" | "transactions";
+type View = "landing" | "dashboard" | "result" | "transactions" | "allocation";
 
 export default function App() {
   const [view, setView] = useState<View>("transactions");
@@ -181,6 +182,11 @@ export default function App() {
           An agent reads approved work, decides who gets paid how much, and pays them with PayPal,
           inside a weekly cap the owner sets.
         </p>
+        <nav className="app-nav" aria-label="Product views">
+          <button onClick={() => setView("allocation")}>Allocation agent</button>
+          <button onClick={() => setView("transactions")}>Verified transactions</button>
+          <button onClick={() => setView("dashboard")}>Legacy payout workflow</button>
+        </nav>
         <p>
           Sender: US sandbox test account, not a real Indian studio. Worst-case exposure: $1,500 per
           week.
@@ -311,6 +317,7 @@ export default function App() {
       )}
 
       {view === "transactions" && <TransactionsDashboard />}
+      {view === "allocation" && <AllocationPlanner />}
 
       {view === "result" && (
         <main>

@@ -17,6 +17,7 @@ import { PayPalAuth } from "./auth.ts";
 import { createSettleServer } from "./routes.ts";
 import { seedJobs } from "./seed.ts";
 import { TransactionStore } from "./transactionStore.ts";
+import { AllocationStore } from "./allocationStore.ts";
 
 function loadEnv(path = ".env"): void {
   try {
@@ -65,6 +66,7 @@ const clientEmailRaw = (process.env.PAYPAL_SANDBOX_CLIENT_EMAIL ?? "").trim();
 const clientEmail = clientEmailRaw === "" ? undefined : clientEmailRaw;
 const jobs = seedJobs(receiverEmail);
 const transactionStore = new TransactionStore(process.env.SETTLE_DB_PATH ?? "data/settle.db");
+const allocationStore = new AllocationStore(process.env.SETTLE_DB_PATH ?? "data/settle.db");
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "app", "dist");
 const distReady = existsSync(join(appDir, "index.html"));
 if (!distReady) {
@@ -81,6 +83,7 @@ const app = createSettleServer({
   groqApiKey: process.env.GROQ_API_KEY ?? "",
   clientEmail,
   transactionStore,
+  allocationStore,
   webhookId: process.env.PAYPAL_WEBHOOK_ID,
   staticDir: distReady ? appDir : undefined,
 });

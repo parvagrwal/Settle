@@ -20,6 +20,10 @@ import type { FetchFn } from "./paypalClient.ts";
 import { TransactionStore } from "./transactionStore.ts";
 import { transmissionFromHeaders, verifyWithPayPal } from "./webhooks.ts";
 import { investigateTransactions, narrateInvestigation } from "./investigation.ts";
+import { AllocationStore } from "./allocationStore.ts";
+import { allocationCounterfactual, allocationDemoContext } from "./scenarioFixtures.ts";
+import { orchestrateAllocation } from "./decisionEngine.ts";
+import { groqScenarioSelector } from "./groqScenarioSelector.ts";
 
 export interface GridRow {
   job_id: string;
@@ -146,6 +150,8 @@ export function createSettleServer(opts: {
   transactionStore?: TransactionStore;
   /** PayPal webhook subscription ID, used only for postback verification. */
   webhookId?: string;
+  /** Durable agent recommendations, approvals and execution controls. */
+  allocationStore?: AllocationStore;
 }): SettleServer {
   const store: SettleStore = {
     jobs: opts.jobs,
@@ -241,6 +247,32 @@ export function createSettleServer(opts: {
         const result = opts.transactionStore.processVerifiedEvent(event, new Date().toISOString(), transmission.id);
         console.log(JSON.stringify({ type: "paypal_webhook_processed", eventId: event.id, correlationId: transmission.id, outcome: result.outcome, rowKey: result.rowKey }));
         sendJson(res, 200, { verification: "SUCCESS", outcome: result.outcome, duplicate: result.duplicate, rowKey: result.rowKey });
+        return;
+      }
+
+      if (req.method === "GET" && path === "/api/allocation/demo-context") {
+        sendJson(res, 200, { ...allocationDemoContext(), source: "illustrative scenario fixture — not customer data or actual cash" });
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/allocation/recommend") {
+        const body = await readJsonBody(req);
+        const context = body.counterfactual === true ? allocationCounterfactual() : allocationDemoContext();
+        const selector = opts.groqApiKey ? groqScenarioSelector({ apiKey: opts.groqApiKey, fetchFn: opts.fetchFn }) : undefined;
+        const result = await orchestrateAllocation({ context, selector, now: new Date().toISOString() });
+        if (result.recommendation && opts.allocationStore) {
+          const rec = result.recommendation;
+          opts.allocationStore.recordRecommendation(rec.selectedPlan, { reason: rec.reason, uncertainties: rec.uncertainties, changeTriggers: rec.changeTriggers }, context);
+        }
+        sendJson(res, 200, { ...result, context, source: "illustrative scenario fixture — no payment authorized" });
+        return;
+      }
+
+      const planMatch = path.match(/^\/api\/allocation\/plans\/([^/]+)$/);
+      if (req.method === "GET" && planMatch) {
+        const plan = opts.allocationStore?.getPlan(decodeURIComponent(planMatch[1]));
+        if (!plan) { sendJson(res, 404, { error: "allocation plan not found" }); return; }
+        sendJson(res, 200, plan);
         return;
       }
 
