@@ -274,6 +274,21 @@ export default function App() {
                   {lastPay.proposer_reason ? ` — ${lastPay.proposer_reason}` : ""}. The rules checked
                   every proposal before any payment.
                 </p>
+                {lastPay.invoice_status !== undefined && lastPay.invoice_status !== null && (
+                  <p>
+                    Invoice:{" "}
+                    {lastPay.invoice_status === "SENT" && lastPay.invoice_id !== null ? (
+                      <>
+                        <strong>{lastPay.invoice_id}</strong> — SENT —{" "}
+                        {usd(lastPay.invoice_total_cents ?? 0)}.
+                      </>
+                    ) : (
+                      <>
+                        not sent ({lastPay.invoice_error ?? lastPay.invoice_status}), bill by hand.
+                      </>
+                    )}
+                  </p>
+                )}
                 <h3>Paid ({lastPay.accepted.length})</h3>
                 {lastPay.accepted.length === 0 && <p>No payments went out.</p>}
                 <ul>

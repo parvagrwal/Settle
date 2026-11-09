@@ -9,6 +9,8 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, resolve, extname } from "node:path";
 import { runAgentLoop, type AgentLoopResult } from "./agent.ts";
 import { groqOrRuleBasedProposer } from "./groqAgent.ts";
+import { billApprovedJobs } from "./invoicing.ts";
+import { centsToDollars } from "./payouts.ts";
 import { DEFAULT_POLICY } from "./policy.ts";
 import { createAuditLog, type AuditLog, type AuditRow } from "./audit.ts";
 import type { Job } from "./jobs.ts";
@@ -28,6 +30,8 @@ export interface SettleStore {
   jobs: Job[];
   allowlistedEmails: Set<string>;
   audit: AuditLog;
+  /** Jobs already billed on this server run. A fresh server start resets it, same as the payout state. */
+  invoicedJobIds: Set<string>;
 }
 
 export interface SettleServer {
@@ -112,6 +116,9 @@ export function createSettleServer(opts: {
   fetchFn?: FetchFn;
   /** Key for the model proposer. Without it the loop proposes rule-based. */
   groqApiKey?: string;
+  /** Email of the client being billed, set by the owner in local .env.
+   * Without it the payout still works and the invoice is skipped. */
+  clientEmail?: string;
   /** Folder with the built dashboard. Without it, only the API is served. */
   staticDir?: string;
 }): SettleServer {
@@ -119,6 +126,7 @@ export function createSettleServer(opts: {
     jobs: opts.jobs,
     allowlistedEmails: opts.allowlistedEmails,
     audit: opts.audit ?? createAuditLog(),
+    invoicedJobIds: new Set<string>(),
   };
   const policy = opts.policy;
 
@@ -221,6 +229,91 @@ export function createSettleServer(opts: {
           refreshToken: opts.refreshToken,
           fetchFn: opts.fetchFn,
         });
+        // Billing: the client is billed for the same jobs the payout just
+        // paid, with the client email the owner set in local .env. Only a
+        // SUCCESS batch with paid jobs is billed, so held, blocked, and
+        // rejected jobs are never invoiced, and a failed batch bills
+        // nothing. A failed bill never unpays or fails the payout: the
+        // payout result stands and the invoice is manual, for the owner
+        // to bill by hand.
+        let invoiceId: string | null = null;
+        let invoiceStatus = "SKIPPED";
+        let invoiceTotalCents = 0;
+        let invoiceError: string | null = null;
+        if (result.batchStatus === "SUCCESS" && result.accepted.length > 0) {
+          const paidTotalCents = result.accepted.reduce((sum, job) => sum + job.amount_cents, 0);
+          const firstPaidJob = result.accepted[0];
+          if (opts.clientEmail === undefined || opts.clientEmail === "") {
+            invoiceError = "no client email in local .env, invoice not sent, bill by hand";
+            store.audit.write({
+              actor: "agent",
+              job_id: firstPaidJob.job_id,
+              action: "rejected",
+              reason: `invoice skipped: ${invoiceError}`,
+              amount_cents: paidTotalCents,
+              payout_batch_id: result.payoutBatchId,
+              paypal_transaction_id: null,
+            });
+          } else {
+            const bill = await billApprovedJobs({
+              baseUrl: opts.baseUrl,
+              token: opts.token,
+              jobs: result.accepted,
+              clientEmail: opts.clientEmail,
+              clientId: "client-1",
+              alreadyInvoicedJobIds: store.invoicedJobIds,
+              refreshToken: opts.refreshToken,
+              fetchFn: opts.fetchFn,
+            });
+            if (!bill.manual && bill.invoice !== null) {
+              invoiceId = bill.invoice.invoiceId;
+              invoiceStatus = "SENT";
+              invoiceTotalCents = bill.totalCents;
+              for (const jobId of bill.jobIds) store.invoicedJobIds.add(jobId);
+              store.audit.write({
+                actor: "agent",
+                job_id: bill.jobIds[0] ?? firstPaidJob.job_id,
+                action: "invoiced",
+                reason: `invoice ${invoiceId} sent for ${bill.jobIds.length} jobs, $${centsToDollars(invoiceTotalCents)}`,
+                amount_cents: invoiceTotalCents,
+                payout_batch_id: result.payoutBatchId,
+                paypal_transaction_id: null,
+              });
+            } else if (
+              bill.rejected.length > 0 &&
+              bill.rejected.every((r) => r.label === "DuplicatePayout")
+            ) {
+              invoiceStatus = "NOT_CREATED";
+              invoiceError = "all paid jobs were already invoiced, no new invoice";
+              store.audit.write({
+                actor: "agent",
+                job_id: firstPaidJob.job_id,
+                action: "rejected",
+                reason: `invoice not created: ${invoiceError}`,
+                amount_cents: paidTotalCents,
+                payout_batch_id: result.payoutBatchId,
+                paypal_transaction_id: null,
+              });
+            } else {
+              invoiceStatus = "MANUAL";
+              invoiceError = bill.error ?? "invoice failed, bill by hand";
+              store.audit.write({
+                actor: "agent",
+                job_id: firstPaidJob.job_id,
+                action: "rejected",
+                reason: `invoice not sent: ${invoiceError}, bill by hand`,
+                amount_cents: paidTotalCents,
+                payout_batch_id: result.payoutBatchId,
+                paypal_transaction_id: null,
+              });
+            }
+          }
+        } else {
+          invoiceError =
+            result.batchStatus === null
+              ? "no jobs were paid, nothing to bill"
+              : `batch was ${result.batchStatus}, nothing was paid to bill`;
+        }
         sendJson(res, 200, {
           accepted: result.accepted.map((job) => job.job_id),
           rejected: result.rejected.map((r) => ({ job_id: r.proposalJobId, label: r.label, reason: r.reason })),
@@ -228,6 +321,10 @@ export function createSettleServer(opts: {
           batch_status: result.batchStatus,
           proposer: wired.source,
           proposer_reason: wired.reason,
+          invoice_id: invoiceId,
+          invoice_status: invoiceStatus,
+          invoice_total_cents: invoiceTotalCents,
+          invoice_error: invoiceError,
         });
         return;
       }

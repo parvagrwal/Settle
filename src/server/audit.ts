@@ -5,7 +5,7 @@
 // Worst-case exposure: $1,500 per week, printed wherever a cap is shown.
 import type { Decision } from "../shared/types.ts";
 
-export type AuditAction = "accepted" | "rejected" | "paid" | "held";
+export type AuditAction = "accepted" | "rejected" | "paid" | "held" | "invoiced";
 
 export interface AuditRow {
   audit_id: string;

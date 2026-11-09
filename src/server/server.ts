@@ -57,6 +57,11 @@ if (config !== null) {
 }
 
 const receiverEmail = config?.receiverEmail ?? "sandbox-receiver@example.com";
+// Email of the client being billed, set by the owner in local .env.
+// Missing means invoicing is skipped with a clear reason; the payout
+// still works. Never throw at startup for a missing client email.
+const clientEmailRaw = (process.env.PAYPAL_SANDBOX_CLIENT_EMAIL ?? "").trim();
+const clientEmail = clientEmailRaw === "" ? undefined : clientEmailRaw;
 const jobs = seedJobs(receiverEmail);
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "app", "dist");
 const distReady = existsSync(join(appDir, "index.html"));
@@ -72,6 +77,7 @@ const app = createSettleServer({
   token,
   refreshToken,
   groqApiKey: process.env.GROQ_API_KEY ?? "",
+  clientEmail,
   staticDir: distReady ? appDir : undefined,
 });
 
@@ -79,4 +85,7 @@ const port = config?.port ?? Number(process.env.PORT ?? "3000");
 const actualPort = await app.listen(port);
 console.log(`Settle dashboard: http://localhost:${actualPort}/`);
 console.log(`Paying is ${token !== undefined ? "on (sandbox)" : "off (no PayPal credentials)"}.`);
+console.log(
+  `Invoicing is ${clientEmail !== undefined ? "on (client email set in local .env)" : "off (no client email in local .env, payouts still work)"}.`,
+);
 console.log("Sandbox only. Test money, no real money moves.");

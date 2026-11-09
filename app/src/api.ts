@@ -52,6 +52,12 @@ export interface PayResult {
   batch_status: string | null;
   proposer: string;
   proposer_reason: string | null;
+  /** Invoice for the same work, when the server sent one. Missing on an
+   * old response, which shows nothing about invoicing. */
+  invoice_id?: string | null;
+  invoice_status?: string | null;
+  invoice_total_cents?: number | null;
+  invoice_error?: string | null;
 }
 
 /** One grid row plus the money columns the dashboard shows. */
