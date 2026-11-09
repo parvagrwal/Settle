@@ -286,3 +286,11 @@ footer {
     padding: 12px;
   }
 }
+
+/* Studio grid: let cell text wrap so the longest reason fits on four
+   lines inside the fixed 200px columns instead of cutting off. Scoped
+   to .studio so the plain grid fallback is untouched. */
+.studio .ag-cell {
+  white-space: normal;
+  line-height: 21px;
+}

@@ -57,10 +57,12 @@ const initialState: AgReportState = {
           },
           format: {
             title: { enabled: true, text: "Payouts" },
-            // Columns size to their content, so the longest status
-            // ("Waiting for owner") and the longest reason (the over-cap
-            // text, 65 characters) show in full instead of truncating.
-            style: { columnAutoSize: true },
+            // Sizing columns to their content leaves no room when a
+            // machine renders the same text slightly wider, so the
+            // longest status and reason were cut off. Every column
+            // instead uses one fixed width, and rows are tall enough
+            // for the longest reason to wrap onto four lines.
+            style: { columnWidth: 200, columnAutoSize: false, theme: { rowHeight: 90 } },
           },
         },
       },
