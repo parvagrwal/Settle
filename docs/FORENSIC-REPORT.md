@@ -126,6 +126,8 @@ Acceptance criteria applied to each are stated in §5 and encoded as tests.
 | 15 | Total paid $4.00 vs rolling spend $0.00 | **Confirmed, and the two numbers are both wrong for the label** | Total is the sum of four *seed* rows; rolling spend is `provider_spend` (empty). Neither is a lifetime provider-confirmed application total. |
 | 16 | No PayPal Agent Toolkit integration | **Confirmed and justified** | The official `paypal/agent-toolkit` exposes invoices, orders, disputes, shipment, catalog, subscriptions, reporting/insights. **It has no Payouts tool**, and the Payouts API is not in `paypal-rest-api-specifications` for the toolkit. Integration would add a dependency without adding a capability this product needs. |
 
+Note, added 2026-11-10, after this audit: the Toolkit has since been integrated for the verifier's Reporting path. `src/server/toolkitReporting.ts` calls the Toolkit's `list_transactions` tool for the verifier's Reporting read; payouts still have no Toolkit tool and stay direct REST. The finding in row 16 above was correct for the audited commit; this note records what changed after it, it does not rewrite the finding.
+
 Additional defects found that were not in the report:
 
 - **D-1 (high).** A late or duplicate `PENDING` webhook can regress a `SUCCESS` payout item:

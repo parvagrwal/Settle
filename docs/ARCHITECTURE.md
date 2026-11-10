@@ -93,8 +93,8 @@ No other value-moving path exists in Settle. Invoicing, `POST /v2/invoicing/invo
 and send, moves a bill to a client, not money out of the studio. It is built
 from the same approved-job list as payouts, same job IDs. If invoicing fails,
 the payout still stands, and the invoice row is labelled manual. Invoicing
-is cut before payout. Reporting, `list_transactions` and
-`GET /v1/reporting/transactions`, only reads. It moves no money.
+is cut before payout. Reporting, the Toolkit's `list_transactions` tool,
+which calls `GET /v1/reporting/transactions`, only reads. It moves no money.
 
 ## 5. Threat model — one row per value-moving path per implementation
 
@@ -123,7 +123,7 @@ a lying data source.
 | Spam refusals to burn the payer's money | Griefing, spam refusals to burn the payer's bounded float | Path 1, PayPal | Many refused attempts, each costing a PayPal fee or a retry, to burn the small bounded float held by the submitter | Bounded and rate-limited, not eliminated; Payouts POST rate limit 400 per minute, Verified, exceeding is HTTP 429 RATE_LIMIT_REACHED, handle with backoff; refusals are recorded, see Section 6, and the float is bounded by design | error-path test, 429, in `evidence/payouts/`; residual risk, see Section 8 |
 | Same job paid twice by two batches at once | Stale approval, or a job paid twice by two batches at once | Path 1, server and PayPal | Two batches, same job, run at the same time, both pass `decide()` before either is recorded as paid | Duplicate key is job ID, not freelancer plus amount; second call returns DuplicatePayout; `sender_item_id` is stored per recipient, reused on retries; poll writes SUCCESS, PENDING, or UNCLAIMED back to the job row, with payout ID | replay and duplicate tests, in `evidence/payouts/`; independent-check recompute, in `evidence/verifier/` |
 | Invoice built from a different list than payouts | Invoicing is used to move money, or a payout is billed twice | Path 1, via invoicing | Invoice is built from a different list than payouts, so a job is paid but not billed, or billed but not paid | Same approved-job list drives Payouts and Invoicing, same job IDs, same grid; invoicing failure leaves payout standing, invoice labelled manual | invoicing test, invoice for unapproved jobs is rejected by `decide()`, in `evidence/invoicing/` |
-| Grid shows a payment that never landed | Verifier is lied to, or the grid shows a payment that never landed | Path 1, via reporting | Stored value in the app says paid, PayPal says otherwise, grid shows the stored value | The independent check recomputes from PayPal Reporting via two independent paths, Toolkit `list_transactions` plus REST `GET /v1/reporting/transactions`, comparing recomputation against recomputation, trusting neither stored value; a mismatch is named and displayed as a mismatch, never averaged away | independent-check sabotage test, change exactly one destination via the owner path, the independent check must fail with a precise diff, in `evidence/verifier/` |
+| Grid shows a payment that never landed | Verifier is lied to, or the grid shows a payment that never landed | Path 1, via reporting | Stored value in the app says paid, PayPal says otherwise, grid shows the stored value | The independent check recomputes from PayPal through two independent paths, Reporting via the Toolkit's `list_transactions` tool and Payouts via direct REST `GET /v1/payments/payouts/{id}`, comparing each against the stored copy and against each other, trusting neither stored value; a mismatch is named and displayed as a mismatch, never averaged away | independent-check sabotage test, change exactly one destination via the owner path, the independent check must fail with a precise diff, in `evidence/verifier/` |
 
 A row is closed only by its named test, not by argument. A row with no
 test is open, and the task that owns it is not done.

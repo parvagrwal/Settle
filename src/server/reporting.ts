@@ -1,7 +1,10 @@
-// Reporting — Transaction Search, REST only, NOT the Agent Toolkit package.
-// GET /v1/reporting/transactions, the call the Toolkit's list_transactions
-// tool makes. Do not confuse with the legacy NVP/SOAP Reporting API,
-// which is a different, older API.
+// Reporting — Transaction Search.
+// The direct REST path lives here: GET /v1/reporting/transactions.
+// The verifier's Reporting path now runs through the PayPal Agent
+// Toolkit's list_transactions tool instead (src/server/toolkitReporting.ts),
+// which calls the same endpoint. The reply parser below is shared by both
+// paths, so the two reads produce the same shape. Do not confuse with the
+// legacy NVP/SOAP Reporting API, which is a different, older API.
 // A payout debit from the sender's account is negative in Reporting:
 // a $1.00 payout shows as -1.00. The verifier compares absolute amounts.
 import { paypalRequest, PayPalError, type FetchFn } from "./paypalClient.ts";
@@ -49,39 +52,10 @@ function readString(obj: Record<string, unknown>, key: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-export async function listTransactions(opts: {
-  baseUrl: string;
-  token: string;
-  startDate: Date;
-  endDate: Date;
-  pageSize?: number;
-  refreshToken?: () => Promise<string>;
-  fetchFn?: FetchFn;
-}): Promise<ReportingListResult> {
-  const pageSize = opts.pageSize ?? MAX_REPORTING_PAGE_SIZE;
-  if (pageSize < 1 || pageSize > MAX_REPORTING_PAGE_SIZE) {
-    throw new Error(`reporting: pageSize must be between 1 and ${MAX_REPORTING_PAGE_SIZE}`);
-  }
-  if (opts.endDate.getTime() <= opts.startDate.getTime()) {
-    throw new Error("reporting: endDate must be after startDate");
-  }
-  const rangeMs = opts.endDate.getTime() - opts.startDate.getTime();
-  if (rangeMs > MAX_REPORTING_RANGE_DAYS * 24 * 60 * 60 * 1000) {
-    throw new Error(`reporting: search range must be ${MAX_REPORTING_RANGE_DAYS} days or less`);
-  }
-  const query = new URLSearchParams({
-    start_date: toRfc3339(opts.startDate),
-    end_date: toRfc3339(opts.endDate),
-    fields: "all",
-    page_size: String(pageSize),
-  });
-  const { json } = await paypalRequest({
-    method: "GET",
-    path: `${opts.baseUrl}/v1/reporting/transactions?${query.toString()}`,
-    token: opts.token,
-    refreshToken: opts.refreshToken,
-    fetchFn: opts.fetchFn,
-  });
+/** Parse a Transaction Search reply into rows. Shared by the direct REST
+ * path below and by the Toolkit path in toolkitReporting.ts, so both reads
+ * produce the same shape from the same endpoint. */
+export function parseReportingReply(json: Record<string, unknown>): ReportingListResult {
   const details = json.transaction_details;
   if (!Array.isArray(details)) {
     throw new PayPalError(200, "REPORTING_READ_FAILED", "Reporting reply had no transaction_details list");
@@ -115,6 +89,42 @@ export async function listTransactions(opts: {
   const totalItems = typeof json.total_items === "number" ? json.total_items : transactions.length;
   const totalPages = typeof json.total_pages === "number" ? json.total_pages : 1;
   return { transactions, totalItems, totalPages, raw: json };
+}
+
+export async function listTransactions(opts: {
+  baseUrl: string;
+  token: string;
+  startDate: Date;
+  endDate: Date;
+  pageSize?: number;
+  refreshToken?: () => Promise<string>;
+  fetchFn?: FetchFn;
+}): Promise<ReportingListResult> {
+  const pageSize = opts.pageSize ?? MAX_REPORTING_PAGE_SIZE;
+  if (pageSize < 1 || pageSize > MAX_REPORTING_PAGE_SIZE) {
+    throw new Error(`reporting: pageSize must be between 1 and ${MAX_REPORTING_PAGE_SIZE}`);
+  }
+  if (opts.endDate.getTime() <= opts.startDate.getTime()) {
+    throw new Error("reporting: endDate must be after startDate");
+  }
+  const rangeMs = opts.endDate.getTime() - opts.startDate.getTime();
+  if (rangeMs > MAX_REPORTING_RANGE_DAYS * 24 * 60 * 60 * 1000) {
+    throw new Error(`reporting: search range must be ${MAX_REPORTING_RANGE_DAYS} days or less`);
+  }
+  const query = new URLSearchParams({
+    start_date: toRfc3339(opts.startDate),
+    end_date: toRfc3339(opts.endDate),
+    fields: "all",
+    page_size: String(pageSize),
+  });
+  const { json } = await paypalRequest({
+    method: "GET",
+    path: `${opts.baseUrl}/v1/reporting/transactions?${query.toString()}`,
+    token: opts.token,
+    refreshToken: opts.refreshToken,
+    fetchFn: opts.fetchFn,
+  });
+  return parseReportingReply(json);
 }
 
 export interface ReportingBalance {

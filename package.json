@@ -12,5 +12,8 @@
   "devDependencies": {
     "@playwright/test": "^1.65.0",
     "@sparticuz/chromium": "^153.0.0"
+  },
+  "dependencies": {
+    "@paypal/agent-toolkit": "1.11.0"
   }
 }

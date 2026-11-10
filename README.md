@@ -246,10 +246,11 @@ provider's refusal, and the server says so.
   systems tied at **$130**. That result is reported as a tie. There is no
   benchmark evidence that the model is better than the rule-based or manual path,
   and this README does not claim otherwise.
-- **No Payouts tool in `paypal/agent-toolkit`.** Its tools cover invoices,
-  orders/payments, disputes, shipment, catalog, subscriptions and reporting. The
-  integration is therefore hand-written against the Payouts REST API; the
-  toolkit is not used for payouts and this repository does not pretend it is.
+- **The Toolkit is used for one read path, not for payouts.** The verifier's
+  Reporting read runs through the Toolkit's `list_transactions` tool. There is
+  still no Payouts tool in `paypal/agent-toolkit`, so payouts, invoices, and
+  everything that moves money stay direct REST, and this repository does not
+  pretend otherwise.
 - **Requirements A/B/D cannot be quoted.** The original "Sections 7/8/10" text is
   not present anywhere in this repository or its history. They are recorded as
   unavailable rather than reconstructed.

@@ -5,8 +5,8 @@
 // PAYPAL_ENV=sandbox, PAYPAL_SANDBOX_RECEIVER_EMAIL. Never paste secrets
 // in a message.
 // The stored copy is evidence/payouts/payouts-create.json, the payout
-// record. Path 1 reads Reporting live. Path 2 reads the Payouts
-// batch live. The verifier compares all three and prints MATCH or DRIFT.
+// record. Path 1 reads Reporting live, through the Toolkit's
+// list_transactions tool. Path 2 reads the Payouts batch live. The verifier compares all three and prints MATCH or DRIFT.
 // Reporting can lag behind Payouts by hours, so a drift that says a
 // transaction is not found in Reporting yet is a real finding, not a
 // script failure. Re-run later to see if Reporting has caught up.
@@ -16,7 +16,8 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { loadConfig } from "../src/server/config.ts";
 import { PayPalAuth } from "../src/server/auth.ts";
 import { pollPayoutBatch } from "../src/server/payouts.ts";
-import { listTransactions, listBalances } from "../src/server/reporting.ts";
+import { listBalances } from "../src/server/reporting.ts";
+import { listTransactionsViaToolkit } from "../src/server/toolkitReporting.ts";
 import {
   verifyGrid,
   hashFileText,
@@ -84,15 +85,18 @@ writeFileSync("evidence/verifier/payouts-read.json", JSON.stringify(poll.raw, nu
 const payoutItems = payoutItemsFromPoll(poll.raw);
 out(`Payouts read: batch ${payoutBatchId}, ${poll.batchStatus}, ${payoutItems.length} items.`);
 
-// Path 1: Reporting, the last 7 days, which covers the payout.
+// Path 1: Reporting, the last 7 days, which covers the payout. Read through
+// the PayPal Agent Toolkit's list_transactions tool, which calls the same
+// Reporting endpoint as the direct REST path. The Toolkit returns successful
+// transactions only, so this count can be lower than a plain REST read.
 const endDate = new Date();
 const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-const reporting = await listTransactions({
-  baseUrl: config.baseUrl,
-  token,
+const reporting = await listTransactionsViaToolkit({
+  clientId: config.clientId,
+  clientSecret: config.clientSecret,
+  sandbox: config.env === "sandbox",
   startDate,
   endDate,
-  refreshToken,
 });
 const ourTxIds = new Set(payoutItems.map((item) => item.transactionId).filter((id) => id !== null));
 const matching = reporting.transactions.filter((tx) => ourTxIds.has(tx.transactionId));

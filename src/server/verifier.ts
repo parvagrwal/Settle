@@ -1,5 +1,6 @@
 // Verifier — recomputes the grid from PayPal, never from the app's memory.
-// Path 1: Reporting Transaction Search. Path 2: Payouts GET.
+// Path 1: Reporting Transaction Search, through the PayPal Agent Toolkit's
+// list_transactions tool. Path 2: Payouts GET, direct REST.
 // Neither stored value is trusted. A disagreement is a named mismatch,
 // never averaged away.
 // The verifier checks the money facts: who was paid, how much, in what

@@ -219,8 +219,7 @@ npm --prefix app run build -> ✓ built
 - **The legacy `/api/pay` path was kept** for application-origin jobs, because it
   is the agent-loop demonstration and it is now provably unable to pay a seed row.
   `pay-invoice` and `server` tests still cover it with application fixtures.
-- **`paypal/agent-toolkit` is not used for payouts.** It has no Payouts tool, so
-  adding it would be a false claim.
+- **`paypal/agent-toolkit` is used for one read path, not for payouts.** It has no Payouts tool, so adding it for payouts would be a false claim. The verifier's Reporting read runs through its `list_transactions` tool (`src/server/toolkitReporting.ts`), which calls the same Reporting endpoint as the direct REST path; payouts, invoices, and everything that moves money stay direct REST.
 - **No benchmark was invented.** The 2026-11-09 three-way tie at $130 stands as the
   recorded result.
 
