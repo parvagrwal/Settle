@@ -250,7 +250,9 @@ provider's refusal, and the server says so.
   Reporting read runs through the Toolkit's `list_transactions` tool. There is
   still no Payouts tool in `paypal/agent-toolkit`, so payouts, invoices, and
   everything that moves money stay direct REST, and this repository does not
-  pretend otherwise.
+  pretend otherwise. The Toolkit's read omits the payer email on payout
+  transactions (verified live 2026-11-10, 29 of 70); the verifier's money
+  checks do not use it.
 - **Requirements A/B/D cannot be quoted.** The original "Sections 7/8/10" text is
   not present anywhere in this repository or its history. They are recorded as
   unavailable rather than reconstructed.

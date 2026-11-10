@@ -8,13 +8,20 @@
 // the same as a REST failure would. A decorative integration is worse than none.
 // Toolkit version 1.11.0, pinned in package.json. Tool name list_transactions
 // (plural), confirmed from the installed package, not from web docs.
-// Two behaviours of the tool to know, both confirmed from the installed
-// package: (1) it only accepts one transaction status, D, P, S, or V, and
-// defaults to S, successful only, while the REST path returns all statuses;
-// the verifier only needs successful payout transactions, and the comparison
-// script shows the REST path's other-status rows separately so the difference
-// is visible, not hidden. (2) It calls live PayPal unless the sandbox flag
-// is passed, so this module refuses to run unless sandbox is true.
+// Three behaviours of the tool to know, all confirmed from the installed
+// package or from a live run: (1) it only accepts one transaction status,
+// D, P, S, or V, and defaults to S, successful only, while the REST path
+// returns all statuses; the verifier only needs successful payout
+// transactions, and the comparison script shows the REST path's other-status
+// rows separately so the difference is visible, not hidden. (2) It calls
+// live PayPal unless the sandbox flag is passed, so this module refuses to
+// run unless sandbox is true. (3) It does not surface the payer email on
+// payout transactions. Verified live 2026-11-10: 29 of 70 shared
+// transactions had payer none via the Toolkit but the sender email via REST,
+// and the installed package never references payer_info. The verifier does
+// not need the payer: its payer check only fires if a payer IS named and
+// equals the agent email, so a missing payer never triggers a diff, and its
+// money checks use only amount, currency, direction, and transaction ID.
 import { PayPalAgentToolkit } from "@paypal/agent-toolkit/ai-sdk";
 import { PayPalError } from "./paypalClient.ts";
 import {

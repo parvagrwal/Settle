@@ -95,6 +95,9 @@ from the same approved-job list as payouts, same job IDs. If invoicing fails,
 the payout still stands, and the invoice row is labelled manual. Invoicing
 is cut before payout. Reporting, the Toolkit's `list_transactions` tool,
 which calls `GET /v1/reporting/transactions`, only reads. It moves no money.
+The Toolkit's read omits the payer email on payout transactions (verified
+live 2026-11-10, 29 of 70); the verifier's money checks, amount, currency,
+direction, and transaction ID, do not use it.
 
 ## 5. Threat model — one row per value-moving path per implementation
 

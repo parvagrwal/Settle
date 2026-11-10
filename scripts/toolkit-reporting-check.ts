@@ -5,18 +5,25 @@
 // Needs local .env with PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET,
 // PAYPAL_ENV=sandbox. Never paste secrets in a message.
 // Both paths call GET /v1/reporting/transactions for the same 7-day range.
-// One difference is expected and is not a failure: the Toolkit's
+// Two differences are expected and are not failures: (1) the Toolkit's
 // list_transactions returns successful transactions only, while the REST
 // path returns every status. So REST-only rows with a status other than S
-// are listed separately and do not fail the check. A REST-only row with
-// status S, a Toolkit-only row, or a field that disagrees on a shared
-// transaction is a real difference and exits 1.
+// are listed separately and do not fail the check. (2) The Toolkit does not
+// surface the payer email on payout transactions, so a shared transaction
+// whose payer is none via the Toolkit but named via REST is listed
+// separately and does not fail the check. Verified live 2026-11-10, 29 of
+// 70 shared transactions; the installed Toolkit package never references
+// payer_info, and the verifier does not need the payer. A REST-only row
+// with status S, a Toolkit-only row, or a field that disagrees on a shared
+// transaction, amount, currency, status, date, or any other payer
+// disagreement, is a real difference and exits 1.
 // Saves evidence/toolkit-verifier/comparison.json.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { loadConfig } from "../src/server/config.ts";
 import { PayPalAuth } from "../src/server/auth.ts";
-import { listTransactions, type ReportingTransaction } from "../src/server/reporting.ts";
+import { listTransactions } from "../src/server/reporting.ts";
 import { listTransactionsViaToolkit } from "../src/server/toolkitReporting.ts";
+import { compareReportingPaths } from "../src/server/reportingCompare.ts";
 
 function loadEnv(path = ".env"): void {
   try {
@@ -70,47 +77,8 @@ const rest = await listTransactions({
 });
 out(`REST Reporting: ${rest.transactions.length} transactions (every status).`);
 
-function byId(rows: ReportingTransaction[]): Map<string, ReportingTransaction> {
-  const map = new Map<string, ReportingTransaction>();
-  for (const row of rows) map.set(row.transactionId, row);
-  return map;
-}
-
-const toolkitById = byId(toolkit.transactions);
-const restById = byId(rest.transactions);
-const restOnly: { transactionId: string; status: string; amountCents: number }[] = [];
-const restOnlySuccessful: string[] = [];
-for (const row of rest.transactions) {
-  if (!toolkitById.has(row.transactionId)) {
-    restOnly.push({ transactionId: row.transactionId, status: row.status, amountCents: row.amountCents });
-    if (row.status === "S") restOnlySuccessful.push(row.transactionId);
-  }
-}
-const toolkitOnly: string[] = [];
-for (const row of toolkit.transactions) {
-  if (!restById.has(row.transactionId)) toolkitOnly.push(row.transactionId);
-}
-const fieldDiffs: string[] = [];
-for (const row of toolkit.transactions) {
-  const other = restById.get(row.transactionId);
-  if (!other) continue;
-  if (other.amountCents !== row.amountCents) {
-    fieldDiffs.push(`${row.transactionId}: amount is ${row.amountCents} cents via Toolkit but ${other.amountCents} via REST`);
-  }
-  if (other.currency !== row.currency) {
-    fieldDiffs.push(`${row.transactionId}: currency is ${row.currency} via Toolkit but ${other.currency} via REST`);
-  }
-  if (other.status !== row.status) {
-    fieldDiffs.push(`${row.transactionId}: status is ${row.status} via Toolkit but ${other.status} via REST`);
-  }
-  if (other.date !== row.date) {
-    fieldDiffs.push(`${row.transactionId}: date is ${row.date} via Toolkit but ${other.date} via REST`);
-  }
-  if (other.payerEmail !== row.payerEmail) {
-    fieldDiffs.push(`${row.transactionId}: payer is ${row.payerEmail ?? "none"} via Toolkit but ${other.payerEmail ?? "none"} via REST`);
-  }
-}
-
+const comparison = compareReportingPaths(toolkit.transactions, rest.transactions);
+const { restOnly, restOnlySuccessful, toolkitOnly, fieldDiffs, payerDiffs } = comparison;
 out(`REST-only rows: ${restOnly.length}. Of those, successful (status S): ${restOnlySuccessful.length}.`);
 for (const row of restOnly) {
   out(`  REST-only: ${row.transactionId}, status ${row.status}, ${row.amountCents} cents.`);
@@ -119,10 +87,15 @@ out(`Toolkit-only rows: ${toolkitOnly.length}.`);
 for (const id of toolkitOnly) out(`  Toolkit-only: ${id}.`);
 out(`Field differences on shared transactions: ${fieldDiffs.length}.`);
 for (const line of fieldDiffs) out(`  - ${line}.`);
+out(`Payer differences on shared transactions (expected, not a failure): ${payerDiffs.length}.`);
+for (const line of payerDiffs) out(`  - ${line}.`);
 
-const match = restOnlySuccessful.length === 0 && toolkitOnly.length === 0 && fieldDiffs.length === 0;
+const match = comparison.match;
 if (match) {
   out("COMPARISON: MATCH. The Toolkit path and the REST path agree on every shared transaction.");
+  if (payerDiffs.length > 0) {
+    out(`Expected difference, not a failure: the Toolkit does not surface the payer email on ${payerDiffs.length} shared transaction(s); the verifier does not use it.`);
+  }
 } else {
   out("COMPARISON: DIFFERENCE. The two paths disagree, see the lines above.");
 }
@@ -146,6 +119,9 @@ writeFileSync(
       restOnly,
       toolkitOnly,
       fieldDiffs,
+      payerDiffs,
+      expectedDifferences:
+        "The Toolkit does not surface the payer email on payout transactions (verified live 2026-11-10, 29 of 70 shared transactions); those rows are listed under payerDiffs and do not fail the check. The verifier does not use the payer email.",
       match,
     },
     null,
