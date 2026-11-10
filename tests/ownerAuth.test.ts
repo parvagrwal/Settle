@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSettleServer } from "../src/server/routes.ts";
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 import { AllocationStore } from "../src/server/allocationStore.ts";
 
 process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
@@ -40,7 +41,7 @@ async function setup() {
     return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-AUTH", batch_status: "SUCCESS" } });
   }) as unknown as typeof fetch;
   const app = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-paypal-token",

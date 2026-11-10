@@ -31,6 +31,8 @@ const columns: ColDef<DashboardRow>[] = [
     width: 165,
     valueFormatter: (params) => statusLabel(String(params.value ?? "")),
   },
+  { field: "record_origin", headerName: "Origin", sortable: true, width: 110 },
+  { field: "provenance_label", headerName: "What this row is", sortable: false, width: 240 },
   { field: "reason", headerName: "Reason", sortable: false, width: 490 },
   { field: "payout_batch_id", headerName: "Payout batch", sortable: true, width: 160 },
   {
@@ -38,7 +40,11 @@ const columns: ColDef<DashboardRow>[] = [
     headerName: "PayPal fee (USD)",
     sortable: true,
     width: 130,
-    valueFormatter: (params) => (params.value == null ? "Not reported" : `$${Number(params.value).toFixed(2)}`),
+    valueFormatter: (params) => {
+      if (params.data?.fee_state === "not_applicable") return "Not applicable";
+      if (params.value == null) return params.data?.fee_state === "estimate_only" ? "Estimate only" : "Not reported";
+      return `$${Number(params.value).toFixed(2)}`;
+    },
   },
   {
     field: "net_usd",
@@ -53,8 +59,10 @@ export default function GridFallback({ rows }: { rows: DashboardRow[] }) {
   return (
     <div className="plain-grid-wrap">
       <div className="fallback-note">
-        Plain grid view. PayPal fee shows the actual payout_item_fee reported by
-        PayPal (sender-side fee; recipients receive the full payout amount).
+        Plain grid view. Origin says where each row came from: seeded rows are
+        demonstration data and are never counted. The fee column shows the
+        payout_item_fee PayPal reported for that item (sender-side fee); when
+        PayPal reported no fee it says so instead of showing zero.
       </div>
       <div style={{ height: 320, width: "100%" }}>
         <AgGridReact theme={themeQuartz} rowData={rows} columnDefs={columns} />

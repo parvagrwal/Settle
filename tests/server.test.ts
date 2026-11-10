@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSettleServer } from "../src/server/routes.ts";
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 
 // The guarded routes need the owner token. Every test file runs in its
 // own process, so setting it here cannot leak into another file.
@@ -108,7 +109,7 @@ test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the
     const item = batches.get(batchId);
     return mockResponse(200, { batch_header: { payout_batch_id: batchId, batch_status: "SUCCESS" }, items: item ? [item] : [] });
   }) as unknown as typeof fetch;
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -168,7 +169,9 @@ test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the
     assert.equal(byId.get("demo-waiting-2")?.status, "paid");
     assert.equal(byId.get("demo-over-cap")?.status, "waiting_for_meera");
     assert.match(byId.get("demo-over-cap")?.reason ?? "", /PerRequestCapExceeded/);
-    assert.equal(byId.get("settle-audit-1")?.status, "paid");
+    // Seeded rows are not part of this fixture: a record that claims a past
+    // batch is refused, and the provenance test covers that refusal directly.
+    assert.equal(byId.has("settle-audit-1"), false);
   } finally {
     await app.close();
   }

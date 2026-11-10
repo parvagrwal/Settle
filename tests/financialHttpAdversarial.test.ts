@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSettleServer } from "../src/server/routes.ts";
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 import { FinancialStore } from "../src/server/financialStore.ts";
 import { AllocationStore } from "../src/server/allocationStore.ts";
 import { generateAllocationScenarios, type AllocationContext } from "../src/server/allocation.ts";
@@ -128,7 +129,7 @@ function createStatefulPayPalMock(opts: {
 
 test("owner authorization boundary protects policy, discrepancies, reconcile, approve, pay and plan execute", async () => {
   const app = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -190,7 +191,7 @@ test("durable policy, approvals, payouts, rolling cap and invoice deduplication 
   // First server lifetime
   const store1 = new FinancialStore(dbPath);
   const app1 = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -234,7 +235,7 @@ test("durable policy, approvals, payouts, rolling cap and invoice deduplication 
   // Second server lifetime over fresh seedJobs + reopened SQLite file
   const store2 = new FinancialStore(dbPath);
   const app2 = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -289,7 +290,7 @@ test("provider item FAILED is not marked paid and projects a durable failed stat
 
   const store1 = new FinancialStore(dbPath);
   const app1 = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -319,7 +320,7 @@ test("provider item FAILED is not marked paid and projects a durable failed stat
 
   const store2 = new FinancialStore(dbPath);
   const app2 = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -350,7 +351,7 @@ test("provider item FAILED is not marked paid and projects a durable failed stat
 test("concurrent /api/pay requests cannot double-submit the same job or breach the rolling cap", async () => {
   const mock = createStatefulPayPalMock({ delayMs: 50 });
   const app = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -405,7 +406,7 @@ test("concurrent /api/pay requests cannot double-submit the same job or breach t
 test("ambiguous /api/pay returns 202 OUTCOME_UNKNOWN, holds active cap reservation, refuses blind retry, and recovers via /api/financial/reconcile", async () => {
   const mock = createStatefulPayPalMock({ failPostAfterAccept: true });
   const app = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",
@@ -449,8 +450,24 @@ test("ambiguous /api/pay returns 202 OUTCOME_UNKNOWN, holds active cap reservati
     assert.deepEqual(retryBody.accepted, []);
     assert.equal(mock.postCount(), 1);
 
-    // Owner triggers durable provider reconciliation: recovers item by sender_batch_id duplicate link without creating a second batch, clears reservation, marks job paid.
-    const recRes = await fetch(`${base}/api/financial/reconcile`, { method: "POST", headers: OWNER });
+    // Default reconciliation refuses to replay an ambiguous submission: it has
+    // no batch id, and PayPal exposes no lookup by sender_batch_id. The run
+    // records a durable discrepancy and every figure stays where it was.
+    const plainRes = await fetch(`${base}/api/financial/reconcile`, { method: "POST", headers: OWNER });
+    assert.equal(plainRes.status, 200);
+    const plainBody = (await plainRes.json()) as { itemsRecorded: number; idempotentReplay: boolean; discrepancies?: unknown[] };
+    assert.equal(plainBody.itemsRecorded, 0);
+    assert.equal(plainBody.idempotentReplay, false);
+    assert.equal(mock.postCount(), 1);
+    const capsStill = (await (await fetch(`${base}/api/caps`)).json()) as { eligibleSpendCents: number; activeReservationsCents: number };
+    assert.equal(capsStill.eligibleSpendCents, 0);
+    assert.equal(capsStill.activeReservationsCents, 100);
+    const discrepancies = (await (await fetch(`${base}/api/financial/discrepancies`, { headers: OWNER })).json()) as { discrepancies: Array<{ type: string }> };
+    assert.ok(discrepancies.discrepancies.some((row) => row.type === "AMBIGUOUS_SUBMISSION_WITHOUT_BATCH_ID"));
+
+    // Only an explicit owner decision replays the documented idempotency key.
+    // PayPal answers with the original batch, so no second payout is created.
+    const recRes = await fetch(`${base}/api/financial/reconcile`, { method: "POST", headers: { ...OWNER, "Content-Type": "application/json" }, body: JSON.stringify({ idempotentReplay: true }) });
     assert.equal(recRes.status, 200);
     const recBody = (await recRes.json()) as { itemsRecorded: number; cap: { eligibleSpendCents: number; activeReservationsCents: number } };
     assert.equal(recBody.itemsRecorded, 1);
@@ -550,7 +567,7 @@ test("provider orphan payout items surface in GET /api/financial/discrepancies w
     ],
   });
   const app = createSettleServer({
-    jobs: seedJobs("freelancer@example.com"),
+    jobs: payableJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "test-token",

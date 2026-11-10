@@ -158,7 +158,7 @@ test("reconciliation recovers attempt without batch ID via sender_batch_id dupli
   const reservation = store.reservePayment({ jobId: "j1", at: T0 });
   const attempt = store.beginSubmission(reservation.paymentId, T0);
   store.markOutcomeUnknown(attempt.attemptId, "simulated crash during POST", T0);
-  const result = await reconcilePayPal({ ...opts, store });
+  const result = await reconcilePayPal({ ...opts, store, idempotentReplay: true });
   assert.equal(result.itemsRecorded, 1);
   assert.equal(store.getPaymentByJob("j1")?.status, "provider_confirmed");
   assert.equal(store.getPayoutItem(reservation.paymentId)?.activityId, "ACT-1");
@@ -178,9 +178,14 @@ test("reconciliation fetches known batch directly without POST when poll failed 
     return new Response(JSON.stringify({ batch_header: { payout_batch_id: "BATCH-1", batch_status: "SUCCESS" }, items: [item()] }), { status: 200 });
   }) as FetchFn);
 
-  await assert.rejects(submitApprovedPayment({ ...opts, store, jobId: "j1" }), /poll socket hang up/);
+  // A read failure after the batch id is known is retryable work, not an
+  // unknown outcome: the batch exists and this server knows its id.
+  const accepted = await submitApprovedPayment({ ...opts, store, jobId: "j1" });
+  assert.equal(accepted.status, "awaiting_confirmation");
+  assert.equal(accepted.batchStatus, "PROCESSING");
   assert.equal(postCount, 1);
   assert.equal(store.getAttemptBatchId(store.getPaymentByJob("j1")!.paymentId), "BATCH-1");
+  assert.equal(store.listDueConfirmations(new Date().toISOString()).length, 1);
 
   failPoll = false;
   const rec = await reconcilePayPal({ ...opts, store });

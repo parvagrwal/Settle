@@ -20,6 +20,8 @@ import { TransactionStore } from "./transactionStore.ts";
 import { AllocationStore } from "./allocationStore.ts";
 import { FinancialStore } from "./financialStore.ts";
 import { ProductStore } from "./productStore.ts";
+import { confirmDuePayments } from "./financialPayments.ts";
+import { confirmationPolicyFromEnv } from "./paymentState.ts";
 
 function loadEnv(path = ".env"): void {
   try {
@@ -96,6 +98,37 @@ const app = createSettleServer({
   staticDir: distReady ? appDir : undefined,
 });
 
+// Durable confirmation work survives a restart. Re-arm anything that was in
+// flight when the process stopped, then run the sweep on a timer so an accepted
+// batch resolves without a human clicking anything.
+const rearmed = financialStore.rearmConfirmations({ at: new Date().toISOString() });
+if (rearmed > 0) console.log(`Re-armed ${rearmed} in-flight payment(s) for confirmation after restart.`);
+const confirmationPolicy = confirmationPolicyFromEnv();
+let confirming = false;
+async function confirmationSweep(): Promise<void> {
+  if (confirming || token === undefined || config === null) return;
+  confirming = true;
+  try {
+    const result = await confirmDuePayments({
+      store: financialStore,
+      baseUrl: config.baseUrl,
+      token,
+      refreshToken,
+      policy: confirmationPolicy,
+      limit: 25,
+    });
+    if (result.checked > 0) {
+      console.log(`Confirmation sweep: ${result.checked} due, ${result.confirmed} confirmed, ${result.stillPending} still pending, ${result.errors} read error(s).`);
+    }
+  } catch (err) {
+    console.log(`Confirmation sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    confirming = false;
+  }
+}
+const confirmationTimer = setInterval(() => { void confirmationSweep(); }, Number(process.env.SETTLE_CONFIRM_INTERVAL_MS ?? "30000"));
+confirmationTimer.unref();
+
 const port = config?.port ?? Number(process.env.PORT ?? "3000");
 const actualPort = await app.listen(port);
 console.log(`Settle dashboard: http://localhost:${actualPort}/`);
@@ -112,6 +145,7 @@ let closing = false;
 async function shutdown(): Promise<void> {
   if (closing) return;
   closing = true;
+  clearInterval(confirmationTimer);
   await app.close();
   transactionStore.close();
   allocationStore.close();

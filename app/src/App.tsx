@@ -11,6 +11,7 @@ import {
   fetchAudit,
   fetchCaps,
   fetchGrid,
+  fetchReport,
   fetchJobs,
   ownerToken,
   payJobs,
@@ -21,6 +22,7 @@ import {
   type Caps,
   type DashboardRow,
   type JobRow,
+  type FinancialReport,
   type PayResult,
 } from "./api.ts";
 import { usd } from "./fees.ts";
@@ -31,8 +33,9 @@ import FinancialControls from "./FinancialControls.tsx";
 import ApprovalPanel from "./ApprovalPanel.tsx";
 import TransactionsDashboard from "./TransactionsDashboard.tsx";
 import AllocationPlanner from "./AllocationPlanner.tsx";
+import WorkspaceApp from "./WorkspaceApp.tsx";
 
-type View = "landing" | "dashboard" | "result" | "transactions" | "allocation";
+type View = "landing" | "dashboard" | "result" | "transactions" | "allocation" | "workspace";
 
 export default function App() {
   const [view, setView] = useState<View>("transactions");
@@ -40,6 +43,7 @@ export default function App() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [caps, setCaps] = useState<Caps | null>(null);
+  const [report, setReport] = useState<FinancialReport | null>(null);
   const [live, setLive] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
@@ -71,31 +75,35 @@ export default function App() {
   }
 
   const loadAll = useCallback(async () => {
-    const [gridRows, jobRows, auditRows, capsBody] = await Promise.all([
+    const [gridRows, jobRows, auditRows, capsBody, reportBody] = await Promise.all([
       fetchGrid(),
       fetchJobs(),
       fetchAudit(),
       fetchCaps(),
+      fetchReport(),
     ]);
     setRows(gridRows.map(toDashboardRow));
     setJobs(jobRows);
     setAudit(auditRows);
     setCaps(capsBody);
+    setReport(reportBody);
     setLive(true);
     setLoadError(null);
   }, []);
 
   const refreshGrid = useCallback(async () => {
-    const [gridRows, jobRows, auditRows, capsBody] = await Promise.all([
+    const [gridRows, jobRows, auditRows, capsBody, reportBody] = await Promise.all([
       fetchGrid(),
       fetchJobs(),
       fetchAudit(),
       fetchCaps(),
+      fetchReport(),
     ]);
     setRows(gridRows.map(toDashboardRow));
     setJobs(jobRows);
     setAudit(auditRows);
     setCaps(capsBody);
+    setReport(reportBody);
   }, []);
 
   useEffect(() => {
@@ -236,6 +244,7 @@ export default function App() {
           inside a weekly cap the owner sets.
         </p>
         <nav className="app-nav" aria-label="Product views">
+          <button onClick={() => setView("workspace")}>Operational workspace</button>
           <button onClick={() => setView("allocation")}>Allocation agent</button>
           <button onClick={() => setView("transactions")}>Verified transactions</button>
           <button onClick={() => setView("dashboard")}>Legacy payout workflow</button>
@@ -341,25 +350,73 @@ export default function App() {
 
           <section className="kpis" aria-label="Totals">
             <div className="kpi">
-              <div className="kpi-value">{usd(totalPaidCents)}</div>
-              <div className="kpi-label">Total paid</div>
+              <div className="kpi-value">{usd(report?.metrics.lifetimeConfirmedGross.value ?? 0)}</div>
+              <div className="kpi-label">Lifetime provider-confirmed</div>
+              <div className="kpi-note">
+                Sum of SUCCESS provider items over all time. Application records only; seeded rows are
+                excluded.
+              </div>
             </div>
             <div className="kpi">
-              <div className="kpi-value">{usd(totalWaitingCents)}</div>
-              <div className="kpi-label">Total waiting</div>
+              <div className="kpi-value">{usd(report?.metrics.rollingWindowSpend.value ?? 0)}</div>
+              <div className="kpi-label">Rolling 168h spend</div>
+              <div className="kpi-note">
+                The only figure the cap is enforced against. It is smaller than lifetime whenever a
+                confirmed payout is older than the window.
+              </div>
             </div>
             <div className="kpi">
-              <div className="kpi-value">{waitingCount}</div>
-              <div className="kpi-label">Jobs waiting</div>
+              <div className="kpi-value">{usd(report?.metrics.awaitingConfirmation.value ?? 0)}</div>
+              <div className="kpi-label">Awaiting PayPal confirmation</div>
+              <div className="kpi-note">
+                PayPal accepted the batch; the item has not settled. Confirmation work is scheduled and
+                this is not a failure.
+              </div>
             </div>
             <div className="kpi">
               <div className="kpi-value">{usd(remainingCapCents)}</div>
               <div className="kpi-label">Rolling cap left</div>
+              <div className="kpi-note">
+                {report?.cap.fresh
+                  ? `Provider state re-read at ${report.cap.lastSuccessfulReconciliation ?? "unknown"}.`
+                  : "Provider state is not fresh; a submission refreshes it first."}
+              </div>
             </div>
+          </section>
+
+          <section className="panel" aria-label="What the numbers mean">
+            <h2>What each number is</h2>
+            <p className="panel-line">
+              <strong>Source:</strong> {report?.source ?? "not loaded"}.{" "}
+              {report?.environment.note ?? ""}
+            </p>
+            <ul>
+              {report
+                ? ["lifetimeConfirmedGross", "rollingWindowSpend", "awaitingConfirmation", "outcomeUnknown", "demoRecords"].map((key) => {
+                    const metric = report.metrics[key];
+                    return (
+                      <li key={key}>
+                        <strong>{metric.label}: {usd(metric.value)}</strong> — {metric.definition} Window:{" "}
+                        {metric.window}. Includes: {metric.includes}.
+                      </li>
+                    );
+                  })
+                : <li>No report yet.</li>}
+            </ul>
+            {report && report.discrepancies > 0 && (
+              <p className="panel-line" role="status">
+                {report.discrepancies} open discrepancy record(s); see the owner financial controls.
+              </p>
+            )}
+            <p className="panel-line">
+              {usd(totalWaitingCents)} waiting across {waitingCount} row(s) in this grid. Seeded
+              demonstration rows are shown for illustration and are excluded from every figure above.
+            </p>
           </section>
 
           <FinancialControls
             caps={caps}
+            report={report}
             ownerTokenSet={ownerTokenSet}
             onRefresh={refreshGrid}
           />
@@ -399,9 +456,13 @@ export default function App() {
 
           <footer>
             <p>
-              Paid rows are real sandbox receipts from live test runs. Waiting rows are seeded demo
-              jobs for this run. Fees shown use PayPal&apos;s actual <code>payout_item_fee</code>{" "}
-              (sender-side fee). Sandbox only. Test money, no real money moves.
+              Every row carries its origin. <strong>Application</strong> rows were created by this
+              server from an owner action; their money figures come from stored PayPal payout item
+              evidence. <strong>Seed</strong> rows are demonstration data from{" "}
+              <code>data/seed.json</code>: they are never counted in a total, never reserved, and are
+              refused before any PayPal call. A fee is shown only when PayPal reported one for that
+              item, and the estimate and the reported amount are labelled separately. Sandbox only.
+              Test money, no real money moves.
             </p>
             <p>
               <button type="button" className="button button-secondary" onClick={() => setView("landing")}>
@@ -412,6 +473,7 @@ export default function App() {
         </main>
       )}
 
+      {view === "workspace" && <WorkspaceApp />}
       {view === "transactions" && <TransactionsDashboard />}
       {view === "allocation" && <AllocationPlanner />}
 
@@ -448,21 +510,69 @@ export default function App() {
                   </div>
                 )}
                 <p>
-                  Batch: <strong>{lastPay.payout_batch_id ?? "none"}</strong> — status{" "}
-                  <strong>{lastPay.batch_status ?? "none"}</strong>.
+                  Run: <strong>{lastPay.execution_run?.runId ?? "not recorded"}</strong> — status{" "}
+                  <strong>{lastPay.execution_run?.status ?? lastPay.batch_status ?? "none"}</strong>.
+                  {lastPay.execution_run
+                    ? ` ${lastPay.execution_run.items.length} item(s) across ${lastPay.execution_run.batches.length} provider batch(es).`
+                    : ""}
+                </p>
+                <p>
+                  {lastPay
+                    ? `Reported batch status: ${lastPay.batch_status ?? "none"}. ${lastPay.payout_batch_id ? `First batch id ${lastPay.payout_batch_id}; every item below carries its own id.` : ""}`
+                    : ""}
                   {lastPay.actual_fee_cents !== null && lastPay.actual_fee_cents !== undefined ? (
                     <>
                       {" "}
-                      Actual PayPal fee (<code>payout_item_fee</code>):{" "}
+                      Fee reported by PayPal (<code>payout_item_fee</code>):{" "}
                       <strong>{usd(lastPay.actual_fee_cents)}</strong>.
                     </>
-                  ) : null}
+                  ) : (
+                    " No item reported a fee, so the fee is unavailable rather than zero."
+                  )}
                 </p>
+                {(lastPay.execution_run?.items ?? []).length > 0 && (
+                  <>
+                    <h3>Every item in this run</h3>
+                    <ul>
+                      {(lastPay.execution_run?.items ?? []).map((item) => (
+                        <li key={item.jobId}>
+                          {item.jobId} — {item.status}
+                          {item.providerStatus ? ` (provider item ${item.providerStatus})` : " (no provider item yet)"}
+                          {item.payoutBatchId ? ` — batch ${item.payoutBatchId}` : ""}
+                          {item.payoutItemId ? ` — item ${item.payoutItemId}` : ""}
+                          {item.transactionId ? ` — transaction ${item.transactionId}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {(lastPay.fee_records ?? []).length > 0 && (
+                  <>
+                    <h3>Fees, kept as two separate facts</h3>
+                    <ul>
+                      {(lastPay.fee_records ?? []).map((record) => (
+                        <li key={record.job_id}>
+                          <strong>{record.job_id}</strong> —{" "}
+                          {record.estimate
+                            ? `estimate ${usd(record.estimate.estimatedFeeMinor)} (${record.estimate.policyId} v${record.estimate.policyVersion})`
+                            : "no estimate stored"}{" "}
+                          —{" "}
+                          {record.provider
+                            ? `PayPal reported ${usd(record.provider.reportedFeeMinor)}${record.provider.isProviderEstimate ? " (PayPal calls this an estimate)" : ""}`
+                            : "PayPal reported no fee"}{" "}
+                          — {record.explanation}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
                 {lastPay.batch_status === "PROCESSING" && !lastPay.outcomeUnknown && (
                   <div className="panel-line" role="status">
                     <p>
-                      PayPal accepted this batch and it is still processing. Reconcile with PayPal
-                      or wait for the verified webhook to confirm final settlement.
+                      PayPal accepted this batch and the item has not settled. This is{" "}
+                      <strong>awaiting confirmation, not a failure and not a success</strong>. Durable
+                      confirmation work is scheduled for it; you can also run a confirmation sweep
+                      now.
                     </p>
                     <p>
                       <button
@@ -506,7 +616,7 @@ export default function App() {
                     )}
                   </p>
                 )}
-                <h3>{lastPay.outcomeUnknown ? "Confirmed paid" : "Paid"} ({lastPay.accepted.length})</h3>
+                <h3>{lastPay.outcomeUnknown ? "Confirmed paid" : "Provider-confirmed"} ({lastPay.accepted.length})</h3>
                 {lastPay.accepted.length === 0 && (
                   <p>
                     {lastPay.outcomeUnknown

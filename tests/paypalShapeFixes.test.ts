@@ -8,6 +8,7 @@ import { allocationDemoContext } from "../src/server/scenarioFixtures.ts";
 import { orchestrateAllocation } from "../src/server/decisionEngine.ts";
 import { generateAllocationScenarios, validateAllocationPlan } from "../src/server/allocation.ts";
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 import { ProductStore } from "../src/server/productStore.ts";
 import { FinancialStore } from "../src/server/financialStore.ts";
 import { TransactionStore } from "../src/server/transactionStore.ts";
@@ -80,7 +81,7 @@ test("processing payment settles cleanly via verified PAYMENT.PAYOUTS-ITEM.SUCCE
   }) as unknown as typeof fetch;
 
   const app = createSettleServer({
-    jobs: seedJobs("receiver@example.test"),
+    jobs: payableJobs("receiver@example.test"),
     allowlistedEmails: new Set(["receiver@example.test"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "token",
@@ -96,6 +97,10 @@ test("processing payment settles cleanly via verified PAYMENT.PAYOUTS-ITEM.SUCCE
     // Seed a pending item in FinancialStore as if polling hit its ~90s window
     const T0 = new Date().toISOString();
     financialStore.markReconciled(T0);
+    // This test drives the store directly, so it creates the payment identity
+    // the /api/approve route would create. No startup bridge does this.
+    financialStore.verifyRecipient({ recipientId: "recipient-test", email: "receiver@example.test", actor: { actorId: "owner", role: "owner" }, at: T0 });
+    financialStore.approvePayment({ jobId: "demo-waiting-1", recipientId: "recipient-test", requestedRecipientEmail: "receiver@example.test", amountCents: 100, currency: "USD", actor: { actorId: "owner", role: "owner" }, at: T0 });
     const res = financialStore.reservePayment({ jobId: "demo-waiting-1", at: T0 });
     const att = financialStore.beginSubmission(res.paymentId, T0);
     financialStore.recordAttemptBatchId(att.attemptId, "BATCH-PROC-1");

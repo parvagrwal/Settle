@@ -20,6 +20,12 @@ export const sampleRows: DashboardRow[] = [
     fee_usd: 0.02,
     fee_label: "$0.02",
     net_usd: 1.0,
+    record_origin: "application",
+    provenance_label: "Sample row: invented for the landing page, not a payment",
+    seeded: false,
+    fee_state: "provider_reported",
+    fee_estimate_cents: null,
+    execution_run_id: null,
   },
   {
     job_id: "sample-job-2",
@@ -36,6 +42,12 @@ export const sampleRows: DashboardRow[] = [
     fee_usd: null,
     fee_label: "Not reported",
     net_usd: 1.0,
+    record_origin: "application",
+    provenance_label: "Sample row: invented for the landing page, not a payment",
+    seeded: false,
+    fee_state: "unavailable",
+    fee_estimate_cents: null,
+    execution_run_id: null,
   },
 ];
 
