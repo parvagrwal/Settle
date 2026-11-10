@@ -74,13 +74,18 @@ export default function App() {
     setOwnerTokenInput("");
   }
 
+  // The audit history and the financial report are protected reads: without
+  // the owner token (or a session) the server answers 401. The public grid
+  // still loads; the protected panels stay empty rather than failing the page.
   const loadAll = useCallback(async () => {
-    const [gridRows, jobRows, auditRows, capsBody, reportBody] = await Promise.all([
+    const [gridRows, jobRows, capsBody] = await Promise.all([
       fetchGrid(),
       fetchJobs(),
-      fetchAudit(),
       fetchCaps(),
-      fetchReport(),
+    ]);
+    const [auditRows, reportBody] = await Promise.all([
+      fetchAudit().catch(() => []),
+      fetchReport().catch(() => null),
     ]);
     setRows(gridRows.map(toDashboardRow));
     setJobs(jobRows);
@@ -92,12 +97,14 @@ export default function App() {
   }, []);
 
   const refreshGrid = useCallback(async () => {
-    const [gridRows, jobRows, auditRows, capsBody, reportBody] = await Promise.all([
+    const [gridRows, jobRows, capsBody] = await Promise.all([
       fetchGrid(),
       fetchJobs(),
-      fetchAudit(),
       fetchCaps(),
-      fetchReport(),
+    ]);
+    const [auditRows, reportBody] = await Promise.all([
+      fetchAudit().catch(() => []),
+      fetchReport().catch(() => null),
     ]);
     setRows(gridRows.map(toDashboardRow));
     setJobs(jobRows);
@@ -297,9 +304,9 @@ export default function App() {
             <p>
               Settle fixes it in one flow. Meera approves the week&apos;s jobs in one click. The
               agent chooses which approved jobs to pay now, under the run budget Meera sets, the
-              rules check every chosen job against the $200 per-payment cap and the $1,500 weekly
-              cap, and PayPal pays the ones that pass. One that is over the cap waits for Meera,
-              with the reason on screen.
+              rules check every chosen job against the owner&apos;s configured per-payment and
+              weekly caps (shown live in the caps panel), and PayPal pays the ones that pass. One
+              that is over a cap waits for Meera, with the reason on screen.
             </p>
           </section>
 

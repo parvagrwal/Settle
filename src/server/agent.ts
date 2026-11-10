@@ -158,9 +158,12 @@ export async function runAgentLoop(opts: {
     );
 
     if (decision.decision === "reject") {
-      audit.write(rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision }));
-      job.decision_reason = `${decision.label}: ${decision.reason}`;
+      audit.write(rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision, policy }));
+      // A duplicate attempt is a rejected command, recorded in the audit
+      // trail and the response. It never touches the authoritative paid
+      // row: neither its status nor its on-grid reason changes.
       if (decision.label !== "DuplicatePayout") {
+        job.decision_reason = `${decision.label}: ${decision.reason}`;
         job.status =
           decision.label === "WindowCapExceeded" || decision.label === "PerRequestCapExceeded"
             ? "waiting_for_meera"
@@ -197,7 +200,7 @@ export async function runAgentLoop(opts: {
       continue;
     }
 
-    const acceptedRow = rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision });
+    const acceptedRow = rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision, policy });
     audit.write(
       proposal.reason
         ? {

@@ -36,6 +36,10 @@ import { handleProductRoute, userFor } from "./productRoutes.ts";
 import { buildPaymentOperations, type OperationsSnapshot } from "./paymentOperations.ts";
 import { buildPaymentOperationDetail } from "./paymentOperationDetail.ts";
 import { investigateOperations, narrateOperationsInvestigation } from "./operationsInvestigation.ts";
+import { createRateLimiter, refuseIfLimited } from "./rateLimit.ts";
+import { securityHeaders } from "./httpSecurity.ts";
+import { capText } from "./money.ts";
+import { randomUUID } from "node:crypto";
 
 export interface GridRow {
   job_id: string;
@@ -108,8 +112,48 @@ export function gridRows(jobs: Job[]): GridRow[] {
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const text = JSON.stringify(body);
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, { "Content-Type": "application/json", ...securityHeaders() });
   res.end(text);
+}
+
+/** Classify a thrown error into an HTTP response that never confuses a
+ * business-rule refusal with an internal failure, and never leaks internal
+ * detail for a genuine 500. */
+function classifyRouteError(err: unknown): { status: number; body: Record<string, unknown>; internal: boolean } {
+  const message = err instanceof Error ? err.message : "unknown error";
+  if (err instanceof SyntaxError || /request body must be a JSON object/.test(message)) {
+    return { status: 400, body: { error: "request body must be valid JSON", code: "MALFORMED_JSON" }, internal: false };
+  }
+  if (/request body too large/.test(message)) {
+    return { status: 413, body: { error: "request body exceeds the configured size limit", code: "BODY_TOO_LARGE" }, internal: false };
+  }
+  const capMatch = message.match(/^PER_PAYMENT_CAP_EXCEEDED: requested (\d+) cents exceeds the owner's per-payment cap of (\d+) cents \(policy v(\d+)\)/);
+  if (capMatch) {
+    return {
+      status: 422,
+      body: {
+        error: message,
+        code: "PER_PAYMENT_CAP_EXCEEDED",
+        requestedCents: Number(capMatch[1]),
+        limitCents: Number(capMatch[2]),
+        policyVersion: Number(capMatch[3]),
+      },
+      internal: false,
+    };
+  }
+  const conflict = /^(CAP_EXCEEDED:|SUBMISSION_CONFLICT:|DEMO_RECORD_NOT_PAYABLE|EMERGENCY_STOP:|provider reconciliation is stale|payment outcome is unknown|payment is not owner-approved|payment cannot be reserved|job already has a permanent payment identity)/.test(message);
+  if (conflict) {
+    return { status: 409, body: { error: message, code: message.startsWith("CAP_EXCEEDED:") ? "CAP_EXCEEDED" : "CONFLICT" }, internal: false };
+  }
+  if (/^(recipient is not owner-verified|recipient substitution is prohibited|invalid recipient email|unsupported currency)/.test(message)) {
+    return { status: 422, body: { error: message, code: "POLICY_VIOLATION" }, internal: false };
+  }
+  const correlationId = randomUUID();
+  return {
+    status: 500,
+    body: { error: "internal server error", code: "INTERNAL_ERROR", correlationId },
+    internal: true,
+  };
 }
 
 const STATIC_CONTENT_TYPES: Record<string, string> = {
@@ -136,7 +180,7 @@ function serveStaticFile(res: ServerResponse, dir: string, path: string): boolea
     if (!existsSync(filePath)) return false;
   }
   const type = STATIC_CONTENT_TYPES[extname(filePath)] ?? "application/octet-stream";
-  res.writeHead(200, { "Content-Type": type });
+  res.writeHead(200, { "Content-Type": type, ...securityHeaders() });
   res.end(readFileSync(filePath));
   return true;
 }
@@ -323,15 +367,36 @@ export function createSettleServer(opts: {
     return { snapshot, userId, workspaceJobs };
   };
 
+  const limiter = createRateLimiter();
+  /** A requester is trusted with private financial reads when it proves the
+   * owner token or carries a server-verified product session. Identity is
+   * never read from the request body. */
+  const requesterAuthorized = (req: IncomingMessage): boolean => {
+    if (requireOwner(req).ok) return true;
+    if (opts.productStore && userFor(req, opts.productStore) !== null) return true;
+    return false;
+  };
+  const maskEmail = (email: string): string => {
+    const at = email.indexOf("@");
+    if (at <= 0) return "***";
+    return `${email[0]}***@${email.slice(at + 1)}`;
+  };
+
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
       const path = url.pathname;
 
-      if (await handleProductRoute(req, res, path, { productStore: opts.productStore, financialStore: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn })) return;
+      if (await handleProductRoute(req, res, path, { productStore: opts.productStore, financialStore: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn, limiter })) return;
 
       if (req.method === "GET" && path === "/api/jobs") {
-        sendJson(res, 200, { jobs: store.jobs });
+        // The grid itself is the public demonstration surface, but recipient
+        // PayPal addresses are private: they are masked unless the requester
+        // proves the owner token or a server-verified session.
+        const authorized = requesterAuthorized(req);
+        sendJson(res, 200, {
+          jobs: store.jobs.map((job) => authorized ? job : { ...job, paypal_email: maskEmail(job.paypal_email) }),
+        });
         return;
       }
       if (req.method === "GET" && path === "/api/grid") {
@@ -354,6 +419,7 @@ export function createSettleServer(opts: {
         return;
       }
       if (req.method === "GET" && path === "/api/audit") {
+        if (!requesterAuthorized(req)) { sendJson(res, 401, { error: "sign in or present the owner token to read the audit history", code: "AUTH_REQUIRED" }); return; }
         const rows: AuditRow[] = store.audit.rows();
         sendJson(res, 200, { rows });
         return;
@@ -376,6 +442,7 @@ export function createSettleServer(opts: {
         return;
       }
       if (req.method === "PUT" && path === "/api/financial/policy") {
+        if (refuseIfLimited({ limiter, bucket: "financialWrite", req, res })) return;
         const owner = requireOwner(req);
         if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         const body = await readJsonBody(req);
@@ -419,6 +486,7 @@ export function createSettleServer(opts: {
         sendJson(res, 200, { ...sweep, cap: financial.getCapSummary(new Date().toISOString()) }); return;
       }
       if (req.method === "GET" && path === "/api/financial/report") {
+        if (!requesterAuthorized(req)) { sendJson(res, 401, { error: "sign in or present the owner token to read the financial report", code: "AUTH_REQUIRED" }); return; }
         sendJson(res, 200, financialReportAt(new Date().toISOString()));
         return;
       }
@@ -436,6 +504,7 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "GET" && path === "/api/transactions") {
+        if (!requesterAuthorized(req)) { sendJson(res, 401, { error: "sign in or present the owner token to read transaction history", code: "AUTH_REQUIRED" }); return; }
         if (!opts.transactionStore) { sendJson(res, 503, { error: "transaction store is not configured" }); return; }
         const since = Number(url.searchParams.get("since") ?? "0");
         if (!Number.isSafeInteger(since) || since < 0) { sendJson(res, 400, { error: "since must be a non-negative integer" }); return; }
@@ -450,6 +519,7 @@ export function createSettleServer(opts: {
 
       const historyMatch = path.match(/^\/api\/transactions\/([^/]+)\/history$/);
       if (req.method === "GET" && historyMatch) {
+        if (!requesterAuthorized(req)) { sendJson(res, 401, { error: "sign in or present the owner token to read transaction history", code: "AUTH_REQUIRED" }); return; }
         if (!opts.transactionStore) { sendJson(res, 503, { error: "transaction store is not configured" }); return; }
         const rowKey = decodeURIComponent(historyMatch[1]);
         if (!opts.transactionStore.getTransaction(rowKey)) { sendJson(res, 404, { error: "transaction not found" }); return; }
@@ -458,6 +528,8 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "POST" && path === "/api/investigate") {
+        if (!requesterAuthorized(req)) { sendJson(res, 401, { error: "sign in or present the owner token to run an investigation", code: "AUTH_REQUIRED" }); return; }
+        if (refuseIfLimited({ limiter, bucket: "investigate", req, res })) return;
         if (!opts.transactionStore) { sendJson(res, 503, { error: "transaction store is not configured" }); return; }
         const body = (await readJsonBody(req)) as { question?: string };
         if (typeof body.question !== "string" || body.question.trim().length < 3 || body.question.length > 1000) {
@@ -497,6 +569,7 @@ export function createSettleServer(opts: {
         return;
       }
       if (req.method === "POST" && path === "/api/operations/investigate") {
+        if (refuseIfLimited({ limiter, bucket: "investigate", req, res })) return;
         const body = (await readJsonBody(req)) as { question?: unknown };
         if (typeof body.question !== "string" || body.question.trim().length < 3 || body.question.length > 500) {
           sendJson(res, 400, { error: "question must contain 3–500 characters" }); return;
@@ -572,6 +645,7 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "POST" && path === "/api/allocation/recommend") {
+        if (refuseIfLimited({ limiter, bucket: "financialWrite", req, res })) return;
         const owner = requireOwner(req);
         if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         const body = await readJsonBody(req);
@@ -596,6 +670,7 @@ export function createSettleServer(opts: {
 
       const executeMatch = path.match(/^\/api\/allocation\/plans\/([^/]+)\/execute$/);
       if (req.method === "POST" && executeMatch) {
+        if (refuseIfLimited({ limiter, bucket: "financialWrite", req, res })) return;
         const owner = requireOwner(req);
         if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         if (!opts.allocationStore) { sendJson(res, 503, { error: "allocation store is not configured" }); return; }
@@ -622,6 +697,7 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "POST" && path === "/api/approve") {
+        if (refuseIfLimited({ limiter, bucket: "financialWrite", req, res })) return;
         const owner = requireOwner(req);
         if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
         const body = await readJsonBody(req);
@@ -671,6 +747,7 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "POST" && path === "/api/pay") {
+        if (refuseIfLimited({ limiter, bucket: "financialWrite", req, res })) return;
         // Ownership is proved here, before any payment runs. The loop
         // and the billing step below both receive that proof, so the
         // decision check sees a real authorised actor, not a hard-coded one.
@@ -699,7 +776,8 @@ export function createSettleServer(opts: {
             rawBudget > weeklyCapCents
           ) {
             sendJson(res, 400, {
-              error: "run budget must be a whole number of cents above $0 and no more than the $1,500 weekly cap",
+              error: `run budget must be a whole number of cents above $0 and no more than the ${capText(weeklyCapCents)} weekly cap currently configured by the owner`,
+              code: "INVALID_RUN_BUDGET",
             });
             return;
           }
@@ -901,10 +979,13 @@ export function createSettleServer(opts: {
                     label: `PROVIDER_ITEM_${sub.item?.status ?? sub.status.toUpperCase()}`,
                     reason: job.decision_reason,
                   });
+                  // The provider failed the item after authorization passed:
+                  // recorded as provider_failed, never as a policy rejection,
+                  // and never by rewriting the earlier accepted event.
                   store.audit.write({
                     actor: "agent",
                     job_id: job.job_id,
-                    action: "rejected",
+                    action: "provider_failed",
                     reason: job.decision_reason,
                     amount_cents: job.amount_cents,
                     payout_batch_id: job.payout_batch_id,
@@ -922,7 +1003,7 @@ export function createSettleServer(opts: {
                   store.audit.write({
                     actor: "agent",
                     job_id: job.job_id,
-                    action: "rejected",
+                    action: "provider_failed",
                     reason: job.decision_reason,
                     amount_cents: job.amount_cents,
                     payout_batch_id: job.payout_batch_id,
@@ -1110,16 +1191,19 @@ export function createSettleServer(opts: {
           "<pre>cd app &amp;&amp; npm install &amp;&amp; npm run build</pre>" +
           "<p>The API still works: <a href=\"/api/grid\">/api/grid</a>.</p>" +
           "<p>Sandbox only. Test money, no real money moves.</p></body></html>";
-        res.writeHead(200, { "Content-Type": "text/html" });
+        res.writeHead(200, { "Content-Type": "text/html", ...securityHeaders() });
         res.end(text);
         return;
       }
 
       sendJson(res, 404, { error: `no route ${req.method} ${path}` });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "unknown error";
-      const conflict = /^(CAP_EXCEEDED:|SUBMISSION_CONFLICT:|DEMO_RECORD_NOT_PAYABLE|EMERGENCY_STOP:|provider reconciliation is stale|payment outcome is unknown|payment is not owner-approved|payment cannot be reserved)/.test(message);
-      sendJson(res, conflict ? 409 : 500, { error: message });
+      const classified = classifyRouteError(err);
+      if (classified.internal) {
+        // The caller gets a correlation id, never the internal detail.
+        console.error(JSON.stringify({ type: "route_error", correlationId: classified.body.correlationId, message: err instanceof Error ? err.message : String(err) }));
+      }
+      sendJson(res, classified.status, classified.body);
     }
   });
 

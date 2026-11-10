@@ -6,14 +6,23 @@ import { verifyOwnerToken } from "./ownerAuth.ts";
 import { deriveVerificationState } from "./verificationState.ts";
 import { publicBatchStatus, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
 import type { FetchFn } from "./paypalClient.ts";
+import { refuseIfLimited, type RateLimiter } from "./rateLimit.ts";
+import { securityHeaders } from "./httpSecurity.ts";
 
 const SESSION_COOKIE = "settle_session";
 type Context = {
   productStore?: ProductStore; financialStore: FinancialStore; baseUrl?: string; token?: string;
-  refreshToken?: () => Promise<string>; fetchFn?: FetchFn;
+  refreshToken?: () => Promise<string>; fetchFn?: FetchFn; limiter?: RateLimiter;
 };
+/** Secure cookie attribute when the deployment serves HTTPS (behind a proxy
+ * that sets x-forwarded-proto, or forced by SETTLE_SECURE_COOKIES=1). */
+function cookieSecurity(req: IncomingMessage): string {
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const https = process.env.SETTLE_SECURE_COOKIES === "1" || (typeof forwardedProto === "string" && forwardedProto.split(",")[0].trim() === "https");
+  return https ? "; Secure" : "";
+}
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
-  res.writeHead(status, { "Content-Type": "application/json", ...headers }); res.end(JSON.stringify(body));
+  res.writeHead(status, { "Content-Type": "application/json", ...securityHeaders(), ...headers }); res.end(JSON.stringify(body));
 }
 async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []; let size = 0;
@@ -103,17 +112,18 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
       send(res, 200, user ? { authenticated: true, user, workspaces: store.listWorkspaces(user.userId) } : { authenticated: false, user: null, workspaces: store.listWorkspaces(null) }); return true;
     }
     if (req.method === "POST" && path === "/api/product/auth/login") {
+      if (ctx.limiter && refuseIfLimited({ limiter: ctx.limiter, bucket: "login", req, res })) return true;
       const input = await body(req); const token = typeof input.token === "string" ? input.token : null;
       const verified = verifyOwnerToken(token);
       if (!verified.ok) { send(res, verified.status, { error: verified.error }); return true; }
       const displayName = (process.env.SETTLE_OWNER_NAME ?? "").trim() || "Workspace owner";
       const configuredEmail = (process.env.SETTLE_OWNER_EMAIL ?? "").trim();
       const login = store.createOwnerSession({ displayName, email: configuredEmail || null }, new Date().toISOString(), 12 * 60 * 60 * 1000);
-      send(res, 200, { user: login.user, expiresAt: login.expiresAt }, { "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(login.sessionToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200` }); return true;
+      send(res, 200, { user: login.user, expiresAt: login.expiresAt }, { "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(login.sessionToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${cookieSecurity(req)}` }); return true;
     }
     if (req.method === "POST" && path === "/api/product/auth/logout") {
       store.deleteSession(sessionToken(req));
-      res.writeHead(204, { "Set-Cookie": `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` }); res.end(); return true;
+      res.writeHead(204, { "Set-Cookie": `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${cookieSecurity(req)}` }); res.end(); return true;
     }
     if (req.method === "POST" && path === "/api/product/workspaces") {
       if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
@@ -137,6 +147,11 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
       send(res, 200, productSnapshot(store, ctx.financialStore, workspaceId, user, providerConfigured)); return true;
     }
     if (req.method === "POST" && rest === "/recommend") {
+      // A product decision is a write: it requires a server-verified session
+      // even in the demonstration workspace, and it is rate limited, so an
+      // anonymous caller cannot flood the decision history.
+      if (!user) { send(res, 401, { error: "owner sign-in is required to generate a recommendation" }); return true; }
+      if (ctx.limiter && refuseIfLimited({ limiter: ctx.limiter, bucket: "recommend", req, res })) return true;
       const decision = store.createRecommendation(workspaceId, user?.userId ?? null, new Date().toISOString());
       send(res, 201, { decision }); return true;
     }
@@ -256,9 +271,14 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
     }
     send(res, 404, { error: "product route not found" }); return true;
   } catch (error) {
+    const message = error instanceof Error ? error.message : "product request failed";
+    const capMatch = message.match(/^PER_PAYMENT_CAP_EXCEEDED: requested (\d+) cents exceeds the owner's per-payment cap of (\d+) cents \(policy v(\d+)\)/);
     if (error instanceof ProductPermissionError) send(res, error.status, { error: error.message });
-    else if (error instanceof SyntaxError || (error instanceof Error && /required|requires|invalid|must|cannot|exceed|only the workspace owner/.test(error.message))) send(res, 400, { error: error instanceof Error ? error.message : "invalid request" });
-    else send(res, 500, { error: error instanceof Error ? error.message : "product request failed" });
+    else if (capMatch) send(res, 422, { error: message, code: "PER_PAYMENT_CAP_EXCEEDED", requestedCents: Number(capMatch[1]), limitCents: Number(capMatch[2]), policyVersion: Number(capMatch[3]) });
+    else if (error instanceof SyntaxError || /request body must be a JSON object/.test(message)) send(res, 400, { error: "request body must be valid JSON", code: "MALFORMED_JSON" });
+    else if (/request body too large/.test(message)) send(res, 413, { error: "request body exceeds the configured size limit", code: "BODY_TOO_LARGE" });
+    else if (error instanceof Error && /required|requires|invalid|must|cannot|exceed|only the workspace owner/.test(message)) send(res, 400, { error: message });
+    else send(res, 500, { error: "product request failed", code: "INTERNAL_ERROR" });
     return true;
   }
 }

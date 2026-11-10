@@ -190,7 +190,7 @@ test("pay bills only the jobs the payout paid, client email from the server sett
     assert.doesNotMatch(JSON.stringify(body), /demo-over-cap|demo-approve-1/);
 
     // The audit trail names the invoice outcome.
-    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`);
+    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`, { headers: { "x-settle-owner-token": "test-owner-token" } });
     const audit = (await auditRes.json()) as { rows: Array<{ action: string; reason: string }> };
     assert.ok(
       audit.rows.some((row) => row.action === "invoiced" && row.reason.includes("INV2-TEST-001")),
@@ -297,7 +297,7 @@ test("failed invoice does not unpay or fail the payout, invoice is manual", asyn
     assert.equal(byId.get("demo-waiting-1")?.payout_batch_id, "BATCH-INV");
 
     // The audit trail names the manual invoice and its reason.
-    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`);
+    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`, { headers: { "x-settle-owner-token": "test-owner-token" } });
     const audit = (await auditRes.json()) as { rows: Array<{ reason: string }> };
     assert.ok(audit.rows.some((row) => row.reason.includes("invoice not sent")), "no audit row names the manual invoice");
   } finally {

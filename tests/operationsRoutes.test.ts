@@ -116,7 +116,7 @@ test("a signed-out visitor sees demonstration records only; the owner also sees 
 test("capacity in the operations snapshot equals the financial report served by the same process", async () => {
   const ctx = await setup();
   try {
-    const [operations, report] = await Promise.all([ctx.get("/api/operations", { cookie: ctx.cookie }), ctx.get("/api/financial/report")]);
+    const [operations, report] = await Promise.all([ctx.get("/api/operations", { cookie: ctx.cookie }), ctx.get("/api/financial/report", { cookie: ctx.cookie })]);
     assert.equal(operations.body.capacity.rollingSpendCents, report.body.metrics.rollingWindowSpend.value);
     assert.equal(operations.body.capacity.rollingSpendCents, 4000);
     assert.equal(operations.body.capacity.remainingCents, report.body.cap.remainingCents);

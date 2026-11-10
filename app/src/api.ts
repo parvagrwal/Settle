@@ -217,7 +217,9 @@ export function toDashboardRow(row: GridRow): DashboardRow {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+  // Sensitive reads (audit, transactions, financial report) are server-gated:
+  // the owner token header or the HttpOnly session cookie proves the reader.
+  const res = await fetch(path, { headers: ownerHeaders() });
   if (!res.ok) {
     throw new Error(`request to ${path} failed, HTTP ${res.status}`);
   }

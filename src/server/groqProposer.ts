@@ -108,7 +108,7 @@ export async function groqPropose(opts: {
   const user =
     `Approved jobs to pay, soonest due first:\n${JSON.stringify(jobLines, null, 2)}\n` +
     `Run budget for this run: ${opts.runBudgetCents} cents ($${(opts.runBudgetCents / 100).toFixed(2)}). The total of the jobs you choose must fit the run budget.\n` +
-    `Caps: $200 per payment, $1,500 per week combined. Worst-case exposure: $1,500 per week.` +
+    `The owner's per-payment and rolling weekly caps are enforced by the rules after your proposal; your only budget here is the run budget above.` +
     (opts.extraInstruction ? `\n${opts.extraInstruction}` : "");
   const fetchImpl = (opts.fetchFn ?? fetch) as FetchFn;
   const res = await fetchImpl(GROQ_API_URL, {

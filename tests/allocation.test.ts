@@ -454,7 +454,7 @@ test("no Groq key: Pay pays nothing and returns the candidates for the owner", a
     assert.match(held.data.invoice_error ?? "", /no jobs were paid/);
 
     // The hold is on the audit trail, with the reason.
-    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`);
+    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`, { headers: OWNER_HEADERS });
     const audit = (await auditRes.json()) as { rows: Array<{ action: string; job_id: string; reason: string }> };
     const heldRows = audit.rows.filter((row) => row.action === "held");
     assert.deepEqual(
@@ -593,7 +593,7 @@ test("allocation audit rows name the chosen and held jobs with reasons", async (
     await approve(port, "demo-approve-1");
     const paid = await postPay(port, { runBudgetCents: 200 });
     assert.equal(paid.status, 200);
-    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`);
+    const auditRes = await fetch(`http://127.0.0.1:${port}/api/audit`, { headers: OWNER_HEADERS });
     const audit = (await auditRes.json()) as { rows: Array<{ action: string; job_id: string; reason: string }> };
     const heldRow = audit.rows.find((row) => row.action === "held" && row.job_id === "demo-waiting-2");
     assert.ok(heldRow, "no held audit row for demo-waiting-2");

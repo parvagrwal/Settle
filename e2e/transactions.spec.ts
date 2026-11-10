@@ -4,7 +4,7 @@ const transaction = {
   rowKey: "TEST-POI-1", originalTransactionId: "TEST-TX-1", associatedOrderId: null,
   latestEventId: "TEST-WH-1", originalEventId: "TEST-WH-1", transactionTimestamp: "2026-11-09T10:00:00Z",
   eventCreatedAt: "2026-11-09T10:00:01Z", eventReceivedAt: "2026-11-09T10:00:02Z",
-  status: "PENDING", grossCents: 12500, currency: "USD", feeCents: null, netCents: null,
+  status: "ONHOLD", grossCents: 12500, currency: "USD", feeCents: null, netCents: null,
   payerEmail: null, payeeEmail: "fixture@example.test", paymentMethod: "PAYPAL",
   payoutBatchId: "TEST-BATCH-1", payoutItemId: "TEST-POI-1", jobId: "test-job-1", relatedTransactionId: null,
   lastEventSequence: 1,
@@ -21,22 +21,22 @@ test("labeled fixture exercises inspection, evidence filtering and persisted del
   let cursor = 0;
   await mockApplication(page);
   await page.route("**/api/transactions?since=*", (route) => {
-    const updated = { ...transaction, status: cursor === 0 ? "PENDING" : "SUCCESS", feeCents: cursor === 0 ? null : 25, netCents: cursor === 0 ? null : 12475, latestEventId: cursor === 0 ? "TEST-WH-1" : "TEST-WH-2", lastEventSequence: cursor === 0 ? 1 : 2 };
+    const updated = { ...transaction, status: cursor === 0 ? "ONHOLD" : "SUCCESS", feeCents: cursor === 0 ? null : 25, netCents: cursor === 0 ? null : 12475, latestEventId: cursor === 0 ? "TEST-WH-1" : "TEST-WH-2", lastEventSequence: cursor === 0 ? 1 : 2 };
     const response = { transactions: cursor === 0 ? [transaction] : [updated], cursor: cursor === 0 ? 1 : 2, serverTime: new Date().toISOString(), source: "AUTOMATED TEST FIXTURE — NOT PAYPAL" };
     cursor = response.cursor;
     return route.fulfill({ json: response });
   });
-  await page.route("**/api/transactions/TEST-POI-1/history", (route) => route.fulfill({ json: { transaction, events: [{ sequence: 1, eventId: "TEST-WH-1", eventType: "PAYMENT.PAYOUTS-ITEM.PENDING", eventCreatedAt: transaction.eventCreatedAt, receivedAt: transaction.eventReceivedAt, transmissionId: "TEST-TRANSMISSION", outcome: "applied", resource: {} }] } }));
-  await page.route("**/api/investigate", (route) => route.fulfill({ json: { question: "Which payments require investigation?", answer: "TEST-POI-1 is PENDING. Fixture response.", facts: [{ label: "Requires attention", value: "1", evidence: ["TEST-POI-1"] }], hypotheses: [], supportingTransactionIds: ["TEST-POI-1"], gridFilter: { transactionIds: ["TEST-POI-1"] }, generatedAt: new Date().toISOString(), source: "Automated fixture" } }));
+  await page.route("**/api/transactions/TEST-POI-1/history", (route) => route.fulfill({ json: { transaction, events: [{ sequence: 1, eventId: "TEST-WH-1", eventType: "PAYMENT.PAYOUTS-ITEM.HELD", eventCreatedAt: transaction.eventCreatedAt, receivedAt: transaction.eventReceivedAt, transmissionId: "TEST-TRANSMISSION", outcome: "applied", resource: {} }] } }));
+  await page.route("**/api/investigate", (route) => route.fulfill({ json: { question: "Which payments require investigation?", answer: "TEST-POI-1 is ONHOLD. Fixture response.", facts: [{ label: "Requires attention", value: "1", evidence: ["TEST-POI-1"] }], hypotheses: [], supportingTransactionIds: ["TEST-POI-1"], gridFilter: { transactionIds: ["TEST-POI-1"] }, generatedAt: new Date().toISOString(), source: "Automated fixture" } }));
   await page.goto("/");
   await expect(page.getByText("Every status has a receipt.")).toBeVisible();
   await expect(page.getByRole("gridcell", { name: "TEST-POI-1" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
-  await expect(page.getByText("PAYMENT.PAYOUTS-ITEM.PENDING")).toBeVisible();
+  await expect(page.getByText("PAYMENT.PAYOUTS-ITEM.HELD")).toBeVisible();
   await expect(page.getByText("TEST-WH-1").first()).toBeVisible();
   await page.screenshot({ path: "evidence/browser/transaction-inspection.png", fullPage: true });
   await page.getByRole("button", { name: "Investigate", exact: true }).click();
-  await expect(page.getByText("TEST-POI-1 is PENDING. Fixture response.")).toBeVisible();
+  await expect(page.getByText("TEST-POI-1 is ONHOLD. Fixture response.")).toBeVisible();
   await page.getByRole("button", { name: /Reveal 1 evidence rows/ }).click();
   await expect(page.getByRole("gridcell", { name: "TEST-POI-1" }).first()).toBeVisible();
   await expect(page.getByText("Cursor 2", { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -49,8 +49,11 @@ test("AG Studio mounts native chart/grid and serializes report state", async ({ 
   await page.goto("/");
   await page.getByRole("tab", { name: "AG Studio analytics" }).click();
   await expect(page.getByText("From pattern to payment population")).toBeVisible();
-  await expect(page.locator(".ag-chart-canvas").first()).toBeVisible({ timeout: 20_000 });
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("settle.studio.report") !== null)).toBe(true);
+  await expect(page.locator(".transaction-studio canvas").first()).toBeVisible({ timeout: 20_000 });
+  // Serialization happens on a state update: cross-filter by clicking the
+  // rendered chart, which is a real user interaction, not a synthetic event.
+  await page.locator(".transaction-studio canvas").first().click({ position: { x: 200, y: 150 }, force: true });
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("settle.studio.report"))), { timeout: 15_000 }).toBe(true);
   await page.screenshot({ path: "evidence/browser/studio-analytics.png", fullPage: true });
 });
 

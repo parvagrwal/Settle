@@ -107,7 +107,10 @@ test("decide gate blocks a duplicate job, mock PayPal is never called", async ()
     actorAuthorized: true
   });
   assert.equal(calls, 0);
-  assert.match(result.rejected[0].decision_reason ?? "", /DuplicatePayout/);
+  // The duplicate is refused without touching the paid row: its status and
+  // reason are untouched, so the grid keeps showing the authoritative state.
+  assert.equal(result.rejected[0].status, "paid");
+  assert.equal(result.rejected[0].decision_reason, null);
 });
 
 test("create batch sends the right payload, with a unique sender_batch_id and PayPal-Request-Id", async () => {

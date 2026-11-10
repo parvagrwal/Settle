@@ -5,18 +5,98 @@ on:
   pull_request:
 
 jobs:
-  test:
+  checks:
+    name: Types, unit, property, integration and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install server dependencies
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+      - name: Install server dependencies (lockfile)
         run: npm ci
-      - name: Server tests
-        run: npm test
-      - name: Dashboard install and build
+      - name: Install dashboard dependencies (lockfile)
+        run: npm --prefix app ci
+      - name: TypeScript type checking (server)
+        run: npm run typecheck
+      - name: Server tests (unit, property-based, database integration, provider contract)
+        run: npm test 2>&1 | tee server-tests.tap
+      - name: Dashboard tests
+        run: npm --prefix app test
+      - name: Production build (includes dashboard type check)
+        run: npm --prefix app run build
+      - name: Retain test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-output
+          path: server-tests.tap
+          retention-days: 14
+
+  e2e:
+    name: Browser end-to-end (real server + mocked UI states)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+      - name: Install dependencies (lockfile)
         run: |
+          npm ci
           npm --prefix app ci
-          npm --prefix app run build
+      - name: Browser preflight (separates browser-setup failures from application failures)
+        run: |
+          node --experimental-strip-types -e '
+            const { chromiumLaunchOptions } = await import("./e2e/support/browser.ts");
+            const options = await chromiumLaunchOptions();
+            console.log("Bundled Chromium starts:", options.executablePath);
+          '
+      - name: Browser E2E tests (mocked UI project + real-server stack project)
+        run: npx playwright test
+      - name: Retain Playwright report, screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidence
+          path: |
+            evidence/browser/playwright-report
+            test-results
+          retention-days: 14
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Dependency audit (production dependencies, high severity and above)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Committed-secret scan
+        run: |
+          set -e
+          # Fail when anything that looks like a live credential is committed.
+          # The repository must hold no PayPal secrets, Groq keys or owner tokens.
+          # A bare variable name is not a secret: the separator must be an
+          # assignment (= or :) so a list such as
+          # "PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET PAYPAL_SANDBOX_RECEIVER_EMAIL"
+          # does not trip the scan.
+          PATTERNS="(client_secret|CLIENT_SECRET)[\"']?[=:][ \t]*[\"']?[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9]{20,}|access_token[\"']?[=:][ \t]*[\"']?[A-Za-z0-9._-]{30,}"
+          if git grep -nE "$PATTERNS" -- ':!*.md' ':!evidence/*' ':!.github/workflows/ci.yml'; then
+            echo "Potential committed secret found"; exit 1
+          fi
+          echo "No committed secrets detected"
+      - name: Security regression tests (auth gates, rate limits, headers, test-only SQL isolation)
+        run: |
+          npm ci
+          node --test tests/hardening.test.ts tests/ownerAuth.test.ts tests/rejection.test.ts

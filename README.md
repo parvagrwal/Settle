@@ -286,6 +286,9 @@ the receipt endpoint.
 | `app/src/WorkspaceApp.tsx` | the operational screen |
 | `app/src/App.tsx` | demonstration dashboard, report view, result screen |
 | `docs/IMPLEMENTATION-LEDGER.md` | per-change record: cause, decision, test, result, risk |
+| `docs/HARDENING-2026-11.md` | 2026-11 hardening pass: baseline findings, fixes, acceptance experiments |
+| `docs/FINANCIAL-INVARIANTS.md` | the ten financial invariants, provider-state exposure policy, audit event semantics |
+| `docs/SECURITY-HARDENING.md` | endpoint auth/rate-limit inventory, security controls, residual limitations |
 
 ## 12. Older documents
 

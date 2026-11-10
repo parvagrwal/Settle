@@ -33,7 +33,9 @@ export async function chromiumLaunchOptions(): Promise<{ executablePath: string;
   if (!starts(executablePath)) {
     const libraries = join(tmpdir(), "al2023", "lib");
     if (!existsSync(libraries)) {
-      const bin = join(dirname(require.resolve("@sparticuz/chromium/package.json")), "bin");
+      // The package's exports map does not expose ./package.json, so locate
+      // the bin folder relative to the resolved main entry (build/index.js).
+      const bin = join(dirname(require.resolve("@sparticuz/chromium")), "..", "bin");
       await inflate(join(bin, "al2023.tar.br"));
     }
     setupLambdaEnvironment(libraries);

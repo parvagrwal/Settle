@@ -271,7 +271,7 @@ test("a provider FAILED workspace item is recorded as failed and never shown as 
     const receipt = body.workspace.receipts.find((row) => row.providerStatus === "FAILED")!;
     assert.equal(receipt.verificationState, "provider_response_received");
 
-    const report = (await (await fetch(`${ctx.base}/api/financial/report`)).json()) as { metrics: Record<string, { value: number }> };
+    const report = (await (await fetch(`${ctx.base}/api/financial/report`, { headers: { "x-settle-owner-token": "product-exec-owner" } })).json()) as { metrics: Record<string, { value: number }> };
     assert.equal(report.metrics.lifetimeConfirmedGross.value, 0);
     assert.equal(report.metrics.failed.value, 3000);
   } finally {

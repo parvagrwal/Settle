@@ -126,7 +126,7 @@ test("seeded rows cannot be approved or selected for payment, and no provider ca
 test("report counts only application-origin provider evidence and names the seeded rows it excludes", async () => {
   const mock = mockPayPal();
   await withServer({ jobs: seedJobs("freelancer@example.com"), fetchFn: mock.fetchFn }, async ({ base }) => {
-    const report = (await (await fetch(`${base}/api/financial/report`)).json()) as {
+    const report = (await (await fetch(`${base}/api/financial/report`, { headers: OWNER })).json()) as {
       source: string;
       metrics: Record<string, { value: number; definition: string; window: string; includes: string; verification: string }>;
       environment: { mode: string; configured: boolean };
@@ -166,7 +166,7 @@ test("a payment confirmed before the rolling window appears in lifetime and not 
   });
 
   await withServer({ financial, jobs: [], fetchFn: mockPayPal().fetchFn }, async ({ base }) => {
-    const report = (await (await fetch(`${base}/api/financial/report`)).json()) as {
+    const report = (await (await fetch(`${base}/api/financial/report`, { headers: OWNER })).json()) as {
       metrics: Record<string, { value: number; window: string; definition: string; verification: string }>;
       fees: { providerReportedTotal: { value: number }; providerReportedCount: number; missingProviderFeeCount: number };
       explanations: { totalsDiffer: string };
@@ -253,7 +253,7 @@ test("a run with one refused item is partial, and the refused item is not counte
     assert.equal(failedItem.status, "failed");
     assert.equal(failedItem.providerStatus, "FAILED");
 
-    const report = (await (await fetch(`${base}/api/financial/report`)).json()) as { metrics: Record<string, { value: number }> };
+    const report = (await (await fetch(`${base}/api/financial/report`, { headers: OWNER })).json()) as { metrics: Record<string, { value: number }> };
     assert.equal(report.metrics.lifetimeConfirmedGross.value, 100);
     assert.equal(report.metrics.failed.value, 100);
   });
@@ -318,7 +318,7 @@ test("an unreported provider fee is reported as unknown, never as zero", async (
     assert.equal(body.fee_records[0].consistent, null);
     assert.match(body.fee_records[0].explanation, /not reported|unavailable/i);
 
-    const report = (await (await fetch(`${base}/api/financial/report`)).json()) as {
+    const report = (await (await fetch(`${base}/api/financial/report`, { headers: OWNER })).json()) as {
       fees: { providerReportedTotal: { value: number }; providerReportedCount: number; missingProviderFeeCount: number };
       metrics: Record<string, { value: number }>;
     };
@@ -343,7 +343,7 @@ test("the report and its provenance labels survive a restart from the same datab
   // from the demo rows this new process seeds.
   const second = new FinancialStore(dbFile);
   await withServer({ financial: second, jobs: seedJobs("freelancer@example.com"), fetchFn: mock.fetchFn }, async ({ base }) => {
-    const report = (await (await fetch(`${base}/api/financial/report`)).json()) as { metrics: Record<string, { value: number }> };
+    const report = (await (await fetch(`${base}/api/financial/report`, { headers: OWNER })).json()) as { metrics: Record<string, { value: number }> };
     assert.equal(report.metrics.lifetimeConfirmedGross.value, 100);
     const grid = (await (await fetch(`${base}/api/grid`)).json()) as { rows: Array<{ job_id: string; record_origin: string; status: string }> };
     // The seeded fixture does not describe the application payment, so the row

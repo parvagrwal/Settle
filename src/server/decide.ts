@@ -1,5 +1,6 @@
 import type { Decision, PaymentRequest, Policy, State } from "../shared/types.ts";
 import type { RejectLabel } from "../shared/labels.ts";
+import { capText } from "./money.ts";
 
 // Reference model, the ground truth (product plan, decision rules). Pure function:
 // no I/O, no PayPal call, no model call. Every payment path must call
@@ -61,10 +62,10 @@ export function decide(
     BigInt(state.spentInWindowCents) + BigInt(request.amountCents) >
     BigInt(policy.weeklyCapCents)
   ) {
-    return reject("WindowCapExceeded", "payment would exceed the $1,500 weekly cap");
+    return reject("WindowCapExceeded", `payment would exceed the ${capText(policy.weeklyCapCents)} weekly cap currently configured by the owner`);
   }
   if (request.amountCents > policy.perPaymentCapCents) {
-    return reject("PerRequestCapExceeded", "payment exceeds the $200 per-payment cap");
+    return reject("PerRequestCapExceeded", `payment exceeds the ${capText(policy.perPaymentCapCents)} per-payment cap currently configured by the owner`);
   }
   return { decision: "accept" };
 }

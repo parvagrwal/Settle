@@ -58,10 +58,12 @@ test("duplicate verified event is idempotent and preserves one history row", () 
   store.close();
 });
 
-test("older pending event cannot overwrite newer success; history remains ordered", () => {
+test("older in-flight event cannot overwrite newer success; history remains ordered", () => {
   const store = new TransactionStore(":memory:");
   store.processVerifiedEvent(payoutItemEvent(), "2026-11-09T10:00:02Z");
-  const old = payoutItemEvent({ id: "WH-0", createTime: "2026-11-09T09:59:59Z", status: "PENDING", transactionId: null });
+  // PAYMENT.PAYOUTS-ITEM.HELD (ONHOLD) is the documented in-flight item event;
+  // PayPal publishes no item PENDING webhook.
+  const old = payoutItemEvent({ id: "WH-0", createTime: "2026-11-09T09:59:59Z", status: "ONHOLD", transactionId: null });
   const result = store.processVerifiedEvent(old, "2026-11-09T10:00:03Z");
   assert.equal(result.outcome, "superseded");
   assert.equal(store.listTransactions()[0].status, "SUCCESS");

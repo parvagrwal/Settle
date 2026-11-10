@@ -4,6 +4,9 @@ import { createSettleServer } from "../src/server/routes.ts";
 import { TransactionStore } from "../src/server/transactionStore.ts";
 import { payoutItemEvent } from "./fixtures/paypalEvents.ts";
 
+process.env.SETTLE_OWNER_TOKEN = "webhook-owner-token";
+const OWNER = { "x-settle-owner-token": "webhook-owner-token" };
+
 const headers = {
   "content-type": "application/json",
   "paypal-transmission-id": "TRANSMISSION-1",
@@ -78,13 +81,13 @@ test("verified raw event reaches idempotent store and persisted delta/history AP
     });
     const duplicate = await post(port, event);
     assert.equal((await duplicate.json()).outcome, "duplicate");
-    const delta = await fetch(`http://127.0.0.1:${port}/api/transactions?since=0`);
+    const delta = await fetch(`http://127.0.0.1:${port}/api/transactions?since=0`, { headers: OWNER });
     const body = await delta.json();
     assert.equal(body.transactions.length, 1);
     assert.equal(body.transactions[0].originalTransactionId, "TX-1");
     assert.equal(body.cursor, 1);
     assert.equal(body.serverTime !== undefined, true);
-    const history = await fetch(`http://127.0.0.1:${port}/api/transactions/POI-1/history`);
+    const history = await fetch(`http://127.0.0.1:${port}/api/transactions/POI-1/history`, { headers: OWNER });
     assert.equal((await history.json()).events.length, 1);
   } finally { await app.close(); transactionStore.close(); }
 });

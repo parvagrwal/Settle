@@ -61,3 +61,13 @@ export function bpsOfMinor(minor: number, bps: number): number {
   if (result > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("fee exceeds safe integer range");
   return Number(result);
 }
+
+/** Human cap text for policy messages: $1,500 for whole dollars, $3.50 otherwise. */
+export function capText(cents: number): string {
+  assertMinor(cents, "cap", { allowZero: true });
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString("en-US", {
+    minimumFractionDigits: Number.isInteger(dollars) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}

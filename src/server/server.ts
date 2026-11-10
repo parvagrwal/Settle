@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { loadConfig, type SettleConfig } from "./config.ts";
 import { PayPalAuth } from "./auth.ts";
 import { createSettleServer } from "./routes.ts";
+import { createAuditLog } from "./audit.ts";
 import { seedJobs } from "./seed.ts";
 import { TransactionStore } from "./transactionStore.ts";
 import { AllocationStore } from "./allocationStore.ts";
@@ -84,6 +85,9 @@ if (!distReady) {
 
 const app = createSettleServer({
   jobs,
+  // Durable: the legacy audit history lives in the same SQLite file as the
+  // ledger and survives restarts. ":memory:" keeps the in-memory behaviour.
+  audit: dbPath === ":memory:" ? undefined : createAuditLog(dbPath),
   allowlistedEmails: new Set([receiverEmail]),
   baseUrl: config?.baseUrl,
   token,

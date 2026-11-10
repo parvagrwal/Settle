@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { providerFeeConsistency } from "./fees.ts";
 import {
   PROVIDER_ITEM_STATE,
+  EXPOSURE_STATES,
   isTerminal,
   providerStatusRank,
   nextConfirmationDelayMs,
@@ -230,7 +231,10 @@ export class FinancialStore {
     const recipient = this.getRecipient(opts.recipientId);
     if (!recipient) throw new Error("recipient is not owner-verified");
     if (opts.requestedRecipientEmail !== undefined && opts.requestedRecipientEmail !== recipient.email) throw new Error("recipient substitution is prohibited");
-    if (opts.amountCents > this.getPolicy().perPaymentCapCents) throw new Error("amount exceeds per-payment cap");
+    const activePolicy = this.getPolicy();
+    if (opts.amountCents > activePolicy.perPaymentCapCents) {
+      throw new Error(`PER_PAYMENT_CAP_EXCEEDED: requested ${opts.amountCents} cents exceeds the owner's per-payment cap of ${activePolicy.perPaymentCapCents} cents (policy v${activePolicy.version})`);
+    }
     return this.tx(() => {
       if (this.getPaymentByJob(opts.jobId)) throw new Error("job already has a permanent payment identity");
       const paymentId = randomUUID();
@@ -272,7 +276,14 @@ export class FinancialStore {
     const confirmedSpendCents = [...byPayment.values()].reduce((sum, value) => sum + value.success, 0);
     const adjustmentsCents = [...byPayment.values()].reduce((sum, value) => sum + Math.min(value.success, value.adjustments), 0);
     const eligibleSpendCents = [...byPayment.values()].reduce((sum, value) => sum + Math.max(0, value.success - value.adjustments), 0);
-    const activeReservationsCents = Number((this.db.prepare("SELECT COALESCE(SUM(amount_cents),0) AS total FROM payments WHERE status IN ('reserved','submitted','outcome_unknown','pending','unclaimed','onhold')").get() as Row).total);
+    // Active exposure is defined once, in paymentState.EXPOSURE_STATES: every
+    // state where money may be moving or the outcome is unresolved counts
+    // against the cap. A payment cannot escape the arithmetic merely because
+    // it is not yet marked paid (awaiting_confirmation, reconciliation_required
+    // included). Confirmed spend is excluded here because provider_spend
+    // already carries it as SUCCESS evidence.
+    const exposurePlaceholders = [...EXPOSURE_STATES].map(() => "?").join(",");
+    const activeReservationsCents = Number((this.db.prepare(`SELECT COALESCE(SUM(amount_cents),0) AS total FROM payments WHERE status IN (${exposurePlaceholders})`).get(...[...EXPOSURE_STATES]) as Row).total);
     const last = this.db.prepare("SELECT last_success_at FROM reconciliation_state WHERE id=1").get() as Row | undefined;
     const lastSuccessfulReconciliation = last?.last_success_at ? String(last.last_success_at) : null;
     const fresh = lastSuccessfulReconciliation !== null && now - iso(lastSuccessfulReconciliation) <= policy.freshnessSeconds * 1000 && now >= iso(lastSuccessfulReconciliation);
@@ -924,7 +935,15 @@ export class FinancialStore {
   }
 
   getAudit(): Row[] { return this.db.prepare("SELECT * FROM financial_audit ORDER BY sequence").all() as Row[]; }
-  unsafeTestOnlySql(sql: string): void { this.db.exec(sql); }
+  /** Direct SQL for tests only. Refused outside the Node test runner so the
+   * method cannot become a production escape hatch: the production server
+   * never runs with NODE_TEST_CONTEXT, NODE_ENV=test or SETTLE_ALLOW_TEST_SQL. */
+  unsafeTestOnlySql(sql: string): void {
+    if (process.env.NODE_TEST_CONTEXT === undefined && process.env.NODE_ENV !== "test" && process.env.SETTLE_ALLOW_TEST_SQL !== "1") {
+      throw new Error("unsafeTestOnlySql is test-only and is disabled outside the test runner");
+    }
+    this.db.exec(sql);
+  }
 }
 
 function summarizeBatch(statuses: string[]): string {

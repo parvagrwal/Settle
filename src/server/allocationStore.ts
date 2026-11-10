@@ -181,6 +181,14 @@ export class AllocationStore {
   }
   isStopped(): boolean { return this.db.prepare("SELECT value FROM control_state WHERE key='emergency_stop'").get()?.value === "1"; }
   getAudit(): Record<string, unknown>[] { return this.db.prepare("SELECT * FROM decision_audit ORDER BY sequence").all() as Record<string, unknown>[]; }
-  unsafeTestOnlySql(sql: string): void { this.db.exec(sql); }
+  /** Direct SQL for tests only. Refused outside the Node test runner so the
+   * method cannot become a production escape hatch: the production server
+   * never runs with NODE_TEST_CONTEXT, NODE_ENV=test or SETTLE_ALLOW_TEST_SQL. */
+  unsafeTestOnlySql(sql: string): void {
+    if (process.env.NODE_TEST_CONTEXT === undefined && process.env.NODE_ENV !== "test" && process.env.SETTLE_ALLOW_TEST_SQL !== "1") {
+      throw new Error("unsafeTestOnlySql is test-only and is disabled outside the test runner");
+    }
+    this.db.exec(sql);
+  }
   close(): void { this.db.close(); }
 }

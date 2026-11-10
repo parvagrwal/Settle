@@ -96,10 +96,12 @@ export async function payApprovedJobs(opts: {
       nowMs,
     );
     if (decision.decision === "reject") {
-      job.decision_reason = `${decision.label}: ${decision.reason}`;
       // Over-cap waits for Meera. Every other new rejection blocks the job,
-      // while DuplicatePayout preserves the already-paid status on the grid.
+      // while DuplicatePayout leaves the already-paid row untouched: the
+      // rejected command is reported in the result and the audit trail,
+      // never written over the authoritative paid state or its reason.
       if (decision.label !== "DuplicatePayout") {
+        job.decision_reason = `${decision.label}: ${decision.reason}`;
         job.status =
           decision.label === "WindowCapExceeded" || decision.label === "PerRequestCapExceeded"
             ? "waiting_for_meera"

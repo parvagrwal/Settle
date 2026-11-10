@@ -14,7 +14,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
-    "@sparticuz/chromium": "^153.0.0"
+    "@sparticuz/chromium": "^153.0.0",
+    "fast-check": "^4.10.2"
   },
   "dependencies": {
     "@paypal/agent-toolkit": "1.11.0"

@@ -222,7 +222,7 @@ test("Fresh install with the real server wiring (product store plus PayPal crede
     assert.equal(byId.get("demo-waiting-2")?.status, "paid");
     assert.equal(byId.get("demo-waiting-2")?.fee_cents, 2);
 
-    const audit = await (await fetch(`${base}/api/audit`)).json() as { rows: Array<{ job_id: string; action: string; payout_batch_id: string | null; paypal_transaction_id: string | null }> };
+    const audit = await (await fetch(`${base}/api/audit`, { headers: { "x-settle-owner-token": TOKEN } })).json() as { rows: Array<{ job_id: string; action: string; payout_batch_id: string | null; paypal_transaction_id: string | null }> };
     const paidAudit = audit.rows.filter((r) => r.action === "paid");
     assert.equal(paidAudit.length, 2);
     assert.equal(paidAudit[0].payout_batch_id, "BATCH-WIRE-1");

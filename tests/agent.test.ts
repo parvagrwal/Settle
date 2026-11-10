@@ -14,6 +14,8 @@ import { createSettleServer } from "../src/server/routes.ts";
 
 // The guarded routes need the owner token. Every test file runs in its
 // own process, so setting it here cannot leak into another file.
+import { DEFAULT_POLICY } from "../src/server/policy.ts";
+
 process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
 const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
 import type { Job } from "../src/server/jobs.ts";
@@ -111,6 +113,7 @@ test("audit row from a decision names the rule, the cap, and the job", () => {
     jobId: "job-1",
     amountCents: 10000,
     decision: { decision: "accept" },
+    policy: DEFAULT_POLICY,
   });
   assert.match(accepted.reason, /\$200 per-payment cap/);
   assert.match(accepted.reason, /\$1,500 weekly cap/);
@@ -371,7 +374,7 @@ test("routes: owner approves a new email once, pay holds for the owner, then Pay
     assert.equal(grid.rows[0].status, "paid");
     assert.equal(grid.rows[0].payout_batch_id, "BATCH-7");
 
-    const auditRes = await fetch(`${base}/api/audit`);
+    const auditRes = await fetch(`${base}/api/audit`, { headers: OWNER_HEADERS });
     const auditBody = (await auditRes.json()) as { rows: Array<{ actor: string; action: string }> };
     assert.ok(auditBody.rows.some((row) => row.actor === "owner" && row.action === "accepted"));
     assert.ok(auditBody.rows.some((row) => row.actor === "agent" && row.action === "held"));
@@ -418,7 +421,8 @@ test("routes: approve of an unknown job returns 404, and no response carries the
     });
     assert.equal(res.status, 404);
     for (const path of ["/api/jobs", "/api/grid", "/api/audit"]) {
-      const getRes = await fetch(`${base}${path}`);
+      // The audit history is a protected read now; jobs and grid stay public.
+      const getRes = await fetch(`${base}${path}`, path === "/api/audit" ? { headers: OWNER_HEADERS } : undefined);
       assert.equal(getRes.status, 200);
       const text = await getRes.text();
       assert.ok(!text.includes(token), `${path} must not carry the token`);
