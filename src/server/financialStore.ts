@@ -854,6 +854,17 @@ export class FinancialStore {
     }));
   }
 
+  /** Read-only view of the durable confirmation work for one payment, for the
+   * payment investigation view. Returns null when no work was ever scheduled. */
+  getConfirmationState(paymentId: string): { state: string; attemptCount: number; nextAttemptAt: string; lastError: string | null; updatedAt: string } | null {
+    const row = this.db.prepare("SELECT state,attempt_count,next_attempt_at,last_error,updated_at FROM confirmation_jobs WHERE payment_id=?").get(paymentId) as Row | undefined;
+    if (!row) return null;
+    return {
+      state: String(row.state), attemptCount: Number(row.attempt_count), nextAttemptAt: String(row.next_attempt_at),
+      lastError: row.last_error ? String(row.last_error) : null, updatedAt: String(row.updated_at),
+    };
+  }
+
   /** Annotate durable confirmation work without moving its next attempt. */
   noteConfirmationError(paymentId: string, error: string, at: string): void {
     iso(at);

@@ -6,22 +6,16 @@
 // from the server, and again right after a payment completes.
 import { Component, useMemo, useState, type ReactNode } from "react";
 import { AgStudio } from "ag-studio-react";
-import { enableStudioDevValidations } from "ag-studio";
 import type { AgDataSourcesDefinition, AgFieldDefinition, AgReportState } from "ag-studio";
 import { AgCharts } from "ag-charts-react";
-import { AllCommunityModule, ModuleRegistry } from "ag-charts-community";
+import type { AgChartOptions } from "ag-charts-community";
 import type { DashboardRow } from "./api.ts";
 import { statusLabel } from "./status.ts";
 import GridFallback from "./GridFallback.tsx";
+import { settleChartTheme, settleStudioTheme } from "./ag/theme.ts";
 
-// The chart library needs its modules registered once, before any chart
-// is created. Without this, the chart throws and the whole page goes blank.
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-// Development-time checks from the dashboard library. Runs only in dev.
-if (import.meta.env.DEV) {
-  enableStudioDevValidations();
-}
+// Chart and grid modules, licence keys and Studio's development checks are all
+// set up once in ag/setup.ts, before this module is evaluated.
 
 const jobFields: AgFieldDefinition[] = [
   { id: "job_id", name: "Job", format: "textFormat" },
@@ -73,10 +67,18 @@ const initialState: AgReportState = {
       widgetLayout: {
         "jobs-grid": { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 32 },
       },
+      // Page filters for the filters panel, which otherwise only says "No filters available".
+      filter: { page: [
+        { field: { id: "jobs.status_label" }, view: { viewTypeId: "selection" } },
+        { field: { id: "jobs.record_origin" }, view: { viewTypeId: "selection" } },
+      ] },
     },
   ],
   selectedPageId: "overview",
 };
+
+/** Studio fills its parent only when its own root is given a size. */
+const FILL = { height: "100%", width: "100%" } as const;
 
 interface StudioErrorBoundaryProps {
   fallback: ReactNode;
@@ -136,15 +138,17 @@ export default function StudioDashboard({ rows }: StudioDashboardProps) {
     [filteredRows],
   );
 
-  const chartData = useMemo(() => {
+  const chartOptions = useMemo<AgChartOptions>(() => {
     const byStatus = new Map<string, number>();
     for (const row of rows) {
       byStatus.set(row.status, (byStatus.get(row.status) ?? 0) + row.amount_usd);
     }
-    return [...byStatus.entries()].map(([status, amount]) => ({
-      status: statusLabel(status),
-      amount: Math.round(amount * 100) / 100,
-    }));
+    return {
+      theme: settleChartTheme,
+      data: [...byStatus.entries()].map(([status, amount]) => ({ status: statusLabel(status), amount: Math.round(amount * 100) / 100 })),
+      series: [{ type: "bar", xKey: "status", yKey: "amount", yName: "Amount (USD)" }],
+      title: { text: "Amount by status (USD)" },
+    };
   }, [rows]);
 
   return (
@@ -177,7 +181,7 @@ export default function StudioDashboard({ rows }: StudioDashboardProps) {
       ) : (
         <StudioErrorBoundary fallback={<GridFallback rows={filteredRows} />}>
           <div className="studio">
-            <AgStudio data={data} initialState={initialState} mode="view" />
+            <AgStudio style={FILL} data={data} initialState={initialState} mode="view" theme={settleStudioTheme} enableFilterEditingInViewMode={true} />
           </div>
         </StudioErrorBoundary>
       )}
@@ -185,13 +189,7 @@ export default function StudioDashboard({ rows }: StudioDashboardProps) {
       <div className="chart" aria-label="Amount by status">
         <h3>Amount by status (USD)</h3>
         <StudioErrorBoundary fallback={<p>Chart could not load. The payout rows above are still live.</p>}>
-          <AgCharts
-            options={{
-              data: chartData,
-              series: [{ type: "bar", xKey: "status", yKey: "amount", yName: "Amount (USD)" }],
-              title: { text: "Amount by status (USD)" },
-            }}
-          />
+          <AgCharts options={chartOptions} />
         </StudioErrorBoundary>
       </div>
     </section>

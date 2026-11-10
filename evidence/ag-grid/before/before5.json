@@ -1,0 +1,44 @@
+{
+  "timeToFirstRowMs": 614,
+  "t0": {
+    "rows": 6,
+    "paging": "1 to 6 of 6"
+  },
+  "after6s": {
+    "rows": 0,
+    "paging": "0 to 0 of 0"
+  },
+  "overlay": false,
+  "sideBar": false,
+  "afterTabSwitch": {
+    "rows": 0,
+    "paging": "0 to 0 of 0"
+  },
+  "console": [
+    "3× [console:error] ****************************************************************************************************************************",
+    "1× [console:error] AG Grid: error #200 Visit https://www.ag-grid.com/react-data-grid/errors/200?_version_=36.2.0&gridId=1&gridScoped=false&rowModelType=clientSide&isUmd=false&usesAgGridProvider=false&moduleName=SideBar&reasonOrId=%60sideBar%60&reports=%5B%22%7B%5C%22reasonOrId%5C%22%3A%5C%22%60sideBar%60%5C%22%2C%5C%22moduleName%5C%22%3A%5C%22Side",
+    "1× [console:error] ************************************************** AG Studio Core License **************************************************",
+    "1× [console:error] ************************************************** License Key Not Found ***************************************************",
+    "1× [console:error] * All AG Studio Core features are unlocked for trial. *",
+    "1× [console:error] * If you want to hide the watermark please email info@ag-grid.com for a trial license key. *",
+    "1× [console:error] AG Grid: error #200 Visit https://www.ag-grid.com/react-data-grid/errors/200?_version_=36.2.0&gridId=3&gridScoped=true&rowModelType=clientSide&isUmd=false&usesAgGridProvider=false&moduleName=SideBar&reasonOrId=%60sideBar%60&reports=%5B%22%7B%5C%22reasonOrId%5C%22%3A%5C%22%60sideBar%60%5C%22%2C%5C%22moduleName%5C%22%3A%5C%22SideB"
+  ],
+  "perf": {
+    "domContentLoaded": 376,
+    "load": 376,
+    "assets": [
+      {
+        "name": "index-DYxMieE0.js",
+        "transfer": 5891857,
+        "decoded": 5891557,
+        "duration": 74
+      },
+      {
+        "name": "index-CwmaJQMO.css",
+        "transfer": 11138,
+        "decoded": 10838,
+        "duration": 11
+      }
+    ]
+  }
+}

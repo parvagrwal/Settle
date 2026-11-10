@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { ProductPermissionError, ProductStore, type ProductUser, type VerificationState } from "./productStore.ts";
 import { extractPayoutItemFeeCents, type FinancialStore } from "./financialStore.ts";
 import { verifyOwnerToken } from "./ownerAuth.ts";
+import { deriveVerificationState } from "./verificationState.ts";
 import { publicBatchStatus, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
 import type { FetchFn } from "./paypalClient.ts";
 
@@ -28,7 +29,8 @@ function sessionToken(req: IncomingMessage): string | null {
   for (const cookie of cookies) { const [key, ...rest] = cookie.trim().split("="); if (key === SESSION_COOKIE) return decodeURIComponent(rest.join("=")); }
   return null;
 }
-function userFor(req: IncomingMessage, store: ProductStore): ProductUser | null { return store.getUserBySession(sessionToken(req)); }
+/** The server-verified product user for this request, or null. Identity never comes from the request body. */
+export function userFor(req: IncomingMessage, store: ProductStore): ProductUser | null { return store.getUserBySession(sessionToken(req)); }
 function recipientId(email: string): string { return `recipient-${createHash("sha256").update(email).digest("hex").slice(0, 24)}`; }
 function feeFromRaw(raw: unknown): number | null {
   return extractPayoutItemFeeCents(raw);
@@ -43,11 +45,10 @@ export function productSnapshot(store: ProductStore, financial: FinancialStore, 
       if (!payment) continue;
       const item = financial.getPayoutItem(payment.paymentId);
       const discrepancies = financial.getDiscrepancies().filter((row) => row.payment_id === payment.paymentId);
-      const verificationState: VerificationState = discrepancies.length ? "discrepancy_detected"
-        : item?.lastReconciledAt ? "reconciled"
-          : payment.status === "outcome_unknown" ? "verification_unavailable"
-            : payment.status === "provider_confirmed" ? "provider_confirmed"
-              : item ? "provider_response_received" : "unverified";
+      const verificationState: VerificationState = deriveVerificationState({
+        paymentStatus: payment.status, hasProviderItem: item !== null,
+        lastReconciledAt: item?.lastReconciledAt ?? null, discrepancyCount: discrepancies.length,
+      });
       store.syncPaymentEvidence({ workspaceId, paymentId: payment.paymentId, verificationState, submittedAt: payment.submittedAt,
         policyVersion: payment.policyVersion, payoutBatchId: item?.payoutBatchId ?? null, payoutItemId: item?.payoutItemId ?? null,
         transactionId: item?.transactionId ?? null, providerStatus: item?.status ?? null, feeCents: feeFromRaw(item?.raw),

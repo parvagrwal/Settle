@@ -1,0 +1,32 @@
+{
+  "s1_gridState": {
+    "rootClasses": [
+      "ag-root-wrapper ag-layout-normal"
+    ],
+    "themeWrapperClass": "ag-theme-alpine transaction-grid",
+    "sideBarPresent": false,
+    "sideButtons": [],
+    "watermark": false,
+    "headerCheckbox": false,
+    "rowCheckboxes": 24,
+    "rows": 0,
+    "fontFamily": "\"IBM Plex Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Oxygen-Sans, Ubuntu, Cantarell, \"Helvetica Neue\", sans-serif",
+    "bodyFont": "system-ui, \"Segoe UI\", Roboto, sans-serif",
+    "headerBg": "rgba(0, 0, 0, 0)",
+    "agStyleTags": 0,
+    "floatingFilters": 9
+  },
+  "s1_filtersButtonCount": 0,
+  "s1_contextMenu": {
+    "agMenu": false,
+    "items": []
+  },
+  "s1_afterReveal": {
+    "rows": 0
+  },
+  "s1_console": [
+    "1× [console:error] AG Grid: error #200 Unable to use `sideBar` as `SideBarModule` is not registered. Unable to use `getContextMenuItems` as `ContextMenuModule` is not registered. Check if you have registered the modules: import { ModuleRegistry } from 'ag-grid-community'; import { SideBarModule, ContextMenuModule } from 'ag-grid-enterprise'; Modul",
+    "1× [console:warning] AG Grid: warning #306 As of v32.2, `checkboxSelection` is deprecated. Use `rowSelection.checkboxes` in `GridOptions` instead. See https://www.ag-grid.com/react-data-grid/errors/306?_version_=36.2.0&version=32.2&name=checkboxSelection&message=Use+%60rowSelection.checkboxes%60+in+%60GridOptions%60+instead.",
+    "1× [console:warning] AG Grid: warning #306 As of v32.2, `headerCheckboxSelection` is deprecated. Use `rowSelection.headerCheckbox = true` in `GridOptions` instead. See https://www.ag-grid.com/react-data-grid/errors/306?_version_=36.2.0&version=32.2&name=headerCheckboxSelection&message=Use+%60rowSelection.headerCheckbox+%3D+true%60+in+%60GridOptions%"
+  ]
+}

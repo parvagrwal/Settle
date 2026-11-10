@@ -23,7 +23,7 @@
 .transaction-grid { height: 570px; width: 100%; }
 .grid-footer { display: flex; justify-content: space-between; gap: 20px; padding: 10px 14px; color: #60736f; font-size: .75rem; }
 .row-action { padding: 5px 9px; color: #075b49; border: 1px solid #b7d7cd; border-radius: 4px; background: #eff9f6; cursor: pointer; }
-.status-pill { display: inline-block; padding: 4px 8px; border-radius: 99px; font-size: .7rem; font-weight: 800; background: #e9efed; }
+.status-pill { display: inline-block; padding: 4px 8px; border-radius: 99px; font-size: .7rem; font-weight: 800; line-height: 1.25; vertical-align: middle; background: #e9efed; }
 .status-success, .status-completed { color: #096044; background: #dff5e9; }
 .status-failed, .status-denied { color: #972b2b; background: #fde5e5; }
 .status-pending, .status-unclaimed { color: #74520b; background: #fff0c7; }

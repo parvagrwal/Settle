@@ -32,7 +32,10 @@ import { buildFinancialReport } from "./financialReport.ts";
 import { DEFAULT_CONFIRMATION_POLICY } from "./paymentState.ts";
 import { createHash } from "node:crypto";
 import type { ProductStore } from "./productStore.ts";
-import { handleProductRoute } from "./productRoutes.ts";
+import { handleProductRoute, userFor } from "./productRoutes.ts";
+import { buildPaymentOperations, type OperationsSnapshot } from "./paymentOperations.ts";
+import { buildPaymentOperationDetail } from "./paymentOperationDetail.ts";
+import { investigateOperations, narrateOperationsInvestigation } from "./operationsInvestigation.ts";
 
 export interface GridRow {
   job_id: string;
@@ -279,6 +282,47 @@ export function createSettleServer(opts: {
   // to a payment identity. A payment identity is created only by an explicit
   // owner approval of an application-origin job. Seed rows stay seed rows.
 
+  // One place assembles the financial report, so the report route and the
+  // payment operations projection cannot be given different inputs.
+  const financialReportAt = (at: string) => buildFinancialReport({
+    financial,
+    at,
+    providerConfigured: opts.baseUrl !== undefined && opts.token !== undefined,
+    providerConnected: opts.baseUrl !== undefined && opts.token !== undefined,
+    seedRecordCount: store.jobs.filter((job) => job.origin === "seed").length,
+  });
+
+  /** Read-only projection for the requester. Access is decided here and only
+   * here: the legacy grid and the demonstration workspace are public (as they
+   * already are), an operational workspace is included only for its owner's
+   * server-verified session. */
+  const operationsFor = (req: IncomingMessage): { snapshot: OperationsSnapshot; userId: string | null; workspaceJobs: Map<string, { recipientEmail: string }> } => {
+    const at = new Date().toISOString();
+    const productStore = opts.productStore;
+    const user = productStore ? userFor(req, productStore) : null;
+    const userId = user?.userId ?? null;
+    const workspaces = productStore
+      ? productStore.listWorkspaces(userId).map((workspace) => ({
+          workspace,
+          jobs: productStore.listJobs(workspace.workspaceId, userId),
+          receipts: productStore.listReceipts(workspace.workspaceId, userId),
+        }))
+      : [];
+    const workspaceJobs = new Map<string, { recipientEmail: string }>();
+    for (const entry of workspaces) for (const job of entry.jobs) workspaceJobs.set(job.jobId, { recipientEmail: job.recipientEmail });
+    const snapshot = buildPaymentOperations({
+      at,
+      legacyJobs: store.jobs,
+      workspaces,
+      financial,
+      transactions: opts.transactionStore ? opts.transactionStore.listTransactions() : [],
+      report: financialReportAt(at),
+      signedIn: user !== null,
+      approvalExpiryMs: activePolicy().approvalExpiryMs,
+    });
+    return { snapshot, userId, workspaceJobs };
+  };
+
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -375,14 +419,7 @@ export function createSettleServer(opts: {
         sendJson(res, 200, { ...sweep, cap: financial.getCapSummary(new Date().toISOString()) }); return;
       }
       if (req.method === "GET" && path === "/api/financial/report") {
-        const at = new Date().toISOString();
-        sendJson(res, 200, buildFinancialReport({
-          financial,
-          at,
-          providerConfigured: opts.baseUrl !== undefined && opts.token !== undefined,
-          providerConnected: opts.baseUrl !== undefined && opts.token !== undefined,
-          seedRecordCount: store.jobs.filter((job) => job.origin === "seed").length,
-        }));
+        sendJson(res, 200, financialReportAt(new Date().toISOString()));
         return;
       }
       if (req.method === "GET" && path === "/api/financial/control") {
@@ -428,6 +465,48 @@ export function createSettleServer(opts: {
         }
         let analysis = investigateTransactions(opts.transactionStore.listTransactions(), body.question);
         if (process.env.GROQ_API_KEY) analysis = await narrateInvestigation(analysis, process.env.GROQ_API_KEY, opts.fetchFn);
+        sendJson(res, 200, analysis);
+        return;
+      }
+
+      // ---- payment operations: read-only projection, detail and investigation ----
+      if (req.method === "GET" && path === "/api/operations") {
+        sendJson(res, 200, operationsFor(req).snapshot);
+        return;
+      }
+      const operationMatch = path.match(/^\/api\/operations\/payments\/([^/]+)$/);
+      if (req.method === "GET" && operationMatch) {
+        const operationId = decodeURIComponent(operationMatch[1]);
+        const { snapshot, userId, workspaceJobs } = operationsFor(req);
+        // A record the requester cannot see is indistinguishable from one that does not exist.
+        const row = snapshot.rows.find((candidate) => candidate.operationId === operationId);
+        if (!row) { sendJson(res, 404, { error: "payment record not found" }); return; }
+        const sensitive = userId !== null || requireOwner(req).ok;
+        const legacyJob = row.source === "legacy_grid" ? store.jobs.find((job) => job.job_id === row.jobId) : undefined;
+        sendJson(res, 200, buildPaymentOperationDetail({
+          at: snapshot.generatedAt,
+          row,
+          financial,
+          sensitive,
+          approvalExpiryMs: activePolicy().approvalExpiryMs,
+          recipientEmail: legacyJob?.paypal_email ?? (row.jobId ? workspaceJobs.get(row.jobId)?.recipientEmail ?? null : null),
+          workspaceAudit: row.workspaceId && opts.productStore ? opts.productStore.listAudit(row.workspaceId, userId) : [],
+          legacyAudit: store.audit.rows(),
+          transactions: opts.transactionStore ? opts.transactionStore.listTransactions() : [],
+        }));
+        return;
+      }
+      if (req.method === "POST" && path === "/api/operations/investigate") {
+        const body = (await readJsonBody(req)) as { question?: unknown };
+        if (typeof body.question !== "string" || body.question.trim().length < 3 || body.question.length > 500) {
+          sendJson(res, 400, { error: "question must contain 3–500 characters" }); return;
+        }
+        const { snapshot, userId } = operationsFor(req);
+        let analysis = investigateOperations(snapshot, body.question.trim());
+        // Narration is optional and owner-only: an anonymous request never spends the owner's model quota.
+        if (process.env.GROQ_API_KEY && (userId !== null || requireOwner(req).ok)) {
+          analysis = await narrateOperationsInvestigation(analysis, process.env.GROQ_API_KEY, opts.fetchFn);
+        }
         sendJson(res, 200, analysis);
         return;
       }

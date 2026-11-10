@@ -1,0 +1,34 @@
+Regression suite (e2e/regression.spec.ts + e2e/stack/regression-stack.spec.ts) run against the audited commit
+a4590643ee5aff245f1789dd0a5b33ed1471b971, BEFORE any component was changed.
+Run in a pristine export of that commit with only the new test files and Playwright config added.
+Command: npx playwright test --reporter=list      Date: 2026-11-10 (run twice, identical result)
+
+  ✓   1 [mocked] › e2e/regression.spec.ts:22:1 › [preserved] the provider events grid renders the verified rows and the KPI tiles
+  ✘   2 [mocked] › e2e/regression.spec.ts:32:1 › [defect A] rows stay in the grid across polls that bring no change
+  ✓   3 [mocked] › e2e/regression.spec.ts:45:1 › [preserved] inspection opens the immutable event history with payment and webhook identities
+  ✘   4 [mocked] › e2e/regression.spec.ts:57:1 › [defect F] the history drawer shows the received time from the server contract
+  ✓   5 [mocked] › e2e/regression.spec.ts:67:1 › [preserved] a delta from the durable cursor updates the row in place
+  ✓   6 [mocked] › e2e/regression.spec.ts:78:1 › [preserved] an empty verified store is stated plainly and never filled with sample payments
+  ✘   7 [mocked] › e2e/regression.spec.ts:86:1 › [defect B] revealing investigation evidence filters the grid to exactly the evidence rows, and clearing restores all rows
+  ✘   8 [mocked] › e2e/regression.spec.ts:104:1 › [defect C] a failed investigation request is shown to the user and is not an unhandled rejection
+  ✘   9 [mocked] › e2e/regression.spec.ts:117:1 › [issues 1-4, 12] loading the grid logs no AG Grid error, missing-module error or deprecation warning
+  ✘  10 [mocked] › e2e/regression.spec.ts:127:1 › [issues 2, 11] the side bar offers the columns and filters tool panels, and the filters panel lists the column filters
+  ✘  11 [mocked] › e2e/regression.spec.ts:139:1 › [issue 3] the context menu offers copy, export and transaction inspection
+  ✘  12 [mocked] › e2e/regression.spec.ts:149:1 › [issue 4] each row has exactly one selection checkbox, and selecting a row enables Open selected
+  ✘  13 [mocked] › e2e/regression.spec.ts:161:1 › [issue 5] switching between the grid and AG Studio while data keeps changing never calls a destroyed grid
+  ✓  14 [mocked] › e2e/regression.spec.ts:181:1 › [preserved] AG Studio analytics renders a chart and a grid from the verified rows
+  ✘  15 [mocked] › e2e/regression.spec.ts:191:1 › [issues 6, 8, 11] AG Studio analytics: only the documented trial notice without a key, the Settle theme, and usable page filters
+  ✓  16 [mocked] › e2e/regression.spec.ts:208:3 › [preserved] 390 px: "Verified transactions" has no horizontal overflow
+  ✓  17 [mocked] › e2e/regression.spec.ts:208:3 › [preserved] 390 px: "Legacy payout workflow" has no horizontal overflow
+  ✓  18 [mocked] › e2e/regression.spec.ts:208:3 › [preserved] 390 px: "Allocation agent" has no horizontal overflow
+  ✓  19 [mocked] › e2e/regression.spec.ts:208:3 › [preserved] 390 px: "Operational workspace" has no horizontal overflow
+  ✓  20 [stack] › e2e/stack/regression-stack.spec.ts:7:1 › [preserved] legacy dashboard: the Studio payouts grid lists the seeded rows and the plain grid view takes over on request
+  ✓  21 [stack] › e2e/stack/regression-stack.spec.ts:20:1 › [preserved] allocation planner: evaluating the scenario renders the alternatives grid
+  ✘  22 [stack] › e2e/stack/regression-stack.spec.ts:30:1 › [issues 1, 12] production build: the existing grids log no AG Grid error or warning
+  ✓  23 [stack] › e2e/stack/regression-stack.spec.ts:46:3 › [preserved] production build, 390 px: "Verified transactions" has no horizontal overflow
+  ✓  24 [stack] › e2e/stack/regression-stack.spec.ts:46:3 › [preserved] production build, 390 px: "Legacy payout workflow" has no horizontal overflow
+  ✓  25 [stack] › e2e/stack/regression-stack.spec.ts:46:3 › [preserved] production build, 390 px: "Allocation agent" has no horizontal overflow
+  ✓  26 [stack] › e2e/stack/regression-stack.spec.ts:46:3 › [preserved] production build, 390 px: "Operational workspace" has no horizontal overflow
+
+Result: 15 passed, 11 failed.
+Every [preserved] test passes; every [defect]/[issue] test fails. Those 11 failures are the RED step for the fixes.

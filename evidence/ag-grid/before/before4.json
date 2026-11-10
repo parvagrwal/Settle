@@ -1,0 +1,55 @@
+{
+  "allocation": {
+    "wrapper": "ag-theme-alpine",
+    "rows": 3,
+    "font": "\"IBM Plex Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Oxygen-Sans, Ubuntu, Cantarell, \"Helvetica Neue\", sans-serif",
+    "selectedScenario": 0
+  },
+  "allocation_console": [
+    "1× [console:error] AG Grid: error #200 Unable to use `sideBar` as `SideBarModule` is not registered. Unable to use `getContextMenuItems` as `ContextMenuModule` is not registered. Check if you have registered the modules: import { ModuleRegistry } from 'ag-grid-community'; import { SideBarModule, ContextMenuModule } from 'ag-grid-enterprise'; Modul"
+  ],
+  "reveal_before": {
+    "rows": [
+      "TEST-POI-6",
+      "TEST-POI-5",
+      "TEST-POI-4",
+      "TEST-POI-3",
+      "TEST-POI-2",
+      "TEST-POI-1"
+    ],
+    "paging": "1 to 6 of 6"
+  },
+  "reveal_after": {
+    "rows": [],
+    "paging": "0 to 0 of 0"
+  },
+  "reveal_console": [
+    "1× [console:error] AG Grid: error #200 Unable to use `sideBar` as `SideBarModule` is not registered. Unable to use `getContextMenuItems` as `ContextMenuModule` is not registered. Check if you have registered the modules: import { ModuleRegistry } from 'ag-grid-community'; import { SideBarModule, ContextMenuModule } from 'ag-grid-enterprise'; Modul",
+    "1× [console:warning] AG Grid: warning #306 As of v32.2, `checkboxSelection` is deprecated. Use `rowSelection.checkboxes` in `GridOptions` instead. See https://www.ag-grid.com/react-data-grid/errors/306?_version_=36.2.0&version=32.2&name=checkboxSelection&message=Use+%60rowSelection.checkboxes%60+in+%60GridOptions%60+instead.",
+    "1× [console:warning] AG Grid: warning #306 As of v32.2, `headerCheckboxSelection` is deprecated. Use `rowSelection.headerCheckbox = true` in `GridOptions` instead. See https://www.ag-grid.com/react-data-grid/errors/306?_version_=36.2.0&version=32.2&name=headerCheckboxSelection&message=Use+%60rowSelection.headerCheckbox+%3D+true%60+in+%60GridOptions%"
+  ],
+  "investigate_failure": {
+    "console": [
+      "1× [pageerror:error] Error: Request failed with HTTP 500 at request (http://127.0.0.1:5173/src/transactions.ts:3:26) at async runInvestigation (http://127.0.0.1:5173/src/TransactionsDashboard.tsx:194:21)"
+    ],
+    "alertShown": 0,
+    "buttonText": "Investigate"
+  },
+  "real": {
+    "rows": [],
+    "paging": "0 to 0 of 0"
+  },
+  "real_studio": {
+    "canvases": 1,
+    "text": " Loading... Verified gross by status interactive chartinteractive chartPress Space or Enter to toggle visibilityNo data to display Loading... No data to display Cross-filtered payment analysis No Rows To Show Status Payee Gross (USD) Fee (USD) Net (USD) No Rows To Show Page Size: 100 1 to 0 of 0 Pag",
+    "persisted": null
+  },
+  "real_console": [
+    "6× [console:error] ****************************************************************************************************************************",
+    "2× [console:error] ************************************************** AG Studio Core License **************************************************",
+    "2× [console:error] ************************************************** License Key Not Found ***************************************************",
+    "2× [console:error] * All AG Studio Core features are unlocked for trial. *",
+    "2× [console:error] * If you want to hide the watermark please email info@ag-grid.com for a trial license key. *",
+    "1× [console:error] AG Grid: error #200 Unable to use `sideBar` as `SideBarModule` is not registered. Unable to use `getContextMenuItems` as `ContextMenuModule` is not registered. Check if you have registered the modules: import { ModuleRegistry } from 'ag-grid-community'; import { SideBarModule, ContextMenuModule } from 'ag-grid-enterprise'; Modul"
+  ]
+}

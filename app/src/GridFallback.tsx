@@ -3,8 +3,8 @@
 // load, so the payout rows are never a blank screen. The grid library
 // stays in package.json either way, so this fallback is always available.
 import { AgGridReact } from "ag-grid-react";
-import { themeQuartz } from "ag-grid-community";
-import type { ColDef } from "ag-grid-community";
+import type { ColDef, GetRowIdParams } from "ag-grid-community";
+import { settleGridTheme } from "./ag/theme.ts";
 import type { DashboardRow } from "./api.ts";
 import { statusLabel } from "./status.ts";
 
@@ -55,6 +55,8 @@ const columns: ColDef<DashboardRow>[] = [
   },
 ];
 
+const getRowId = (params: GetRowIdParams<DashboardRow>): string => params.data.job_id;
+
 export default function GridFallback({ rows }: { rows: DashboardRow[] }) {
   return (
     <div className="plain-grid-wrap">
@@ -65,7 +67,7 @@ export default function GridFallback({ rows }: { rows: DashboardRow[] }) {
         PayPal reported no fee it says so instead of showing zero.
       </div>
       <div style={{ height: 320, width: "100%" }}>
-        <AgGridReact theme={themeQuartz} rowData={rows} columnDefs={columns} />
+        <AgGridReact<DashboardRow> theme={settleGridTheme} rowData={rows} columnDefs={columns} getRowId={getRowId} />
       </div>
     </div>
   );

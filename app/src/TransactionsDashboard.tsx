@@ -1,41 +1,70 @@
+// Verified provider events: the PayPal webhook ledger in AG Grid, with the
+// immutable event history of each record and an evidence-grounded question box.
+//
+// Grid lifecycle rules followed here (see docs/ag-grid/05-LIFECYCLE.md):
+// - rows reach the grid through the `rowData` prop with `getRowId`; nothing
+//   pushes rows through the Grid API from an effect;
+// - the Grid API lives in state (`useGridApi`) and is cleared when the grid is
+//   destroyed, so nothing can call a destroyed grid after a tab switch;
+// - every object or function handed to `AgGridReact` is stable between renders,
+//   so a poll does not rebuild the side bar or close an open menu;
+// - every request is aborted on unmount and a late answer is ignored.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import type { ColDef, GridApi, GridReadyEvent, SelectionChangedEvent, ValueFormatterParams } from "ag-grid-community";
+import type { ColDef, DefaultMenuItem, GetContextMenuItemsParams, GetRowIdParams, IRowNode, MenuItemDef, SelectionChangedEvent, SideBarDef, ValueFormatterParams } from "ag-grid-community";
 import StudioAnalytics from "./StudioAnalytics.tsx";
-import { transactionApi, type HistoryEvent, type Investigation, type Transaction } from "./transactions.ts";
+import { settleGridTheme } from "./ag/theme.ts";
+import { useGridApi } from "./ag/useGridApi.ts";
+import { formatMoney, isAbort, transactionApi, type HistoryEvent, type Investigation, type Transaction } from "./transactions.ts";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-const money = (cents: number | null, currency: string): string => cents === null ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
-const value = (text: string | null): string => text ?? "Not reported";
+const text = (value: string | null | undefined): string => value ?? "Not reported";
+const settled = (status: string): boolean => status === "SUCCESS" || status === "COMPLETED";
 
 function Status({ value: status }: { value: string }) {
   return <span className={`status-pill status-${status.toLowerCase()}`}>{status}</span>;
 }
 
+// ---- stable grid configuration (module scope: identical on every render) ----
+const getRowId = (params: GetRowIdParams<Transaction>): string => params.data.rowKey;
+const defaultColDef: ColDef<Transaction> = { sortable: true, resizable: true, filter: true, floatingFilter: true };
+const rowSelection = { mode: "singleRow", checkboxes: true, enableClickSelection: true } as const;
+const selectionColumnDef: ColDef<Transaction> = { pinned: "left", width: 48, resizable: false };
+const pageSizes = [25, 50, 100];
+const sideBar: SideBarDef = { toolPanels: ["columns", "filters"] };
+const moneyFormatter = (params: ValueFormatterParams<Transaction, number | null>): string => formatMoney(params.value ?? null, params.data?.currency ?? null);
+const textFormatter = (params: ValueFormatterParams<Transaction, string | null>): string => text(params.value);
+
 export default function TransactionsDashboard() {
   const [rows, setRows] = useState<Transaction[]>([]);
   const [cursor, setCursor] = useState(0);
   const cursorRef = useRef(0);
-  const gridRef = useRef<GridApi<Transaction> | null>(null);
+  const { api, onGridReady, onGridPreDestroyed } = useGridApi<Transaction>();
   const [connection, setConnection] = useState("Connecting to verified event ledger");
   const [view, setView] = useState<"operations" | "analytics">("operations");
+  const [search, setSearch] = useState("");
   const [attentionOnly, setAttentionOnly] = useState(false);
+  const attentionOnlyRef = useRef(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
-  const [history, setHistory] = useState<HistoryEvent[]>([]);
+  const [inspected, setInspected] = useState<Transaction | null>(null);
+  const [history, setHistory] = useState<HistoryEvent[] | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [question, setQuestion] = useState("Which payments require investigation?");
   const [investigation, setInvestigation] = useState<Investigation | null>(null);
+  const [investigationError, setInvestigationError] = useState("");
   const [investigating, setInvestigating] = useState(false);
+  const [evidenceIds, setEvidenceIds] = useState<string[] | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
+  // Delta polling from the durable cursor. One request at a time; aborted on unmount.
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
+    let inFlight = false;
     const sync = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
-        const response = await transactionApi.since(cursorRef.current);
-        if (!active) return;
+        const response = await transactionApi.since(cursorRef.current, controller.signal);
+        if (controller.signal.aborted) return;
         if (response.transactions.length) {
           setRows((current) => {
             const next = new Map(current.map((row) => [row.rowKey, row]));
@@ -47,59 +76,123 @@ export default function TransactionsDashboard() {
         setCursor(response.cursor);
         setLastSync(response.serverTime);
         setConnection("Verified event store connected · delta polling");
-      } catch { if (active) setConnection("Connection interrupted · retrying from durable cursor"); }
+      } catch (error) {
+        if (!isAbort(error) && !controller.signal.aborted) setConnection("Connection interrupted · retrying from durable cursor");
+      } finally {
+        inFlight = false;
+      }
     };
     void sync();
     const timer = setInterval(() => void sync(), 4000);
-    return () => { active = false; clearInterval(timer); };
+    return () => { controller.abort(); clearInterval(timer); };
   }, []);
 
+  // Keep what the drawer and the selection show in step with the latest projection of the same record.
+  const byKey = useMemo(() => new Map(rows.map((row) => [row.rowKey, row])), [rows]);
+  const inspectedRow = inspected ? byKey.get(inspected.rowKey) ?? inspected : null;
+
+  // History of the inspected record. A newer inspection aborts the previous request.
+  const inspectedKey = inspected?.rowKey ?? null;
   useEffect(() => {
-    const api = gridRef.current;
+    if (inspectedKey === null) return;
+    const controller = new AbortController();
+    setHistory(null);
+    setHistoryError("");
+    transactionApi.history(inspectedKey, controller.signal)
+      .then((response) => { if (!controller.signal.aborted) setHistory(response.events); })
+      .catch((error: unknown) => { if (!isAbort(error) && !controller.signal.aborted) setHistoryError("History could not be loaded. The projected row remains available."); });
+    return () => controller.abort();
+  }, [inspectedKey]);
+
+  const inspect = useCallback((transaction: Transaction) => setInspected(transaction), []);
+
+  // External "needs attention" filter: the callbacks are stable and read a ref; the grid is told when the toggle changes.
+  const isExternalFilterPresent = useCallback(() => attentionOnlyRef.current, []);
+  const doesExternalFilterPass = useCallback((node: IRowNode<Transaction>) => !!node.data && !settled(node.data.status), []);
+  useEffect(() => {
+    attentionOnlyRef.current = attentionOnly;
+    api?.onFilterChanged();
+  }, [api, attentionOnly]);
+
+  // Evidence filter: exactly the records the investigation named, as a native set filter on the identity column.
+  useEffect(() => {
     if (!api) return;
-    const known = new Set<string>();
-    api.forEachNode((node) => { if (node.data) known.add(node.data.rowKey); });
-    const updates = rows.filter((row) => known.has(row.rowKey));
-    const additions = rows.filter((row) => !known.has(row.rowKey));
-    api.applyTransaction({ update: updates, add: additions });
-  }, [rows]);
+    let cancelled = false;
+    void api.setColumnFilterModel("rowKey", evidenceIds ? { filterType: "set", values: evidenceIds } : null).then(() => {
+      if (!cancelled && !api.isDestroyed()) api.onFilterChanged();
+    });
+    return () => { cancelled = true; };
+  }, [api, evidenceIds]);
 
-  const inspect = useCallback(async (transaction: Transaction) => {
-    setSelected(transaction); setHistoryError(""); setHistory([]);
-    try { setHistory((await transactionApi.history(transaction.rowKey)).events); }
-    catch { setHistoryError("History could not be loaded. The projected row remains available."); }
-  }, []);
-
-  const clearEvidenceFilter = useCallback(() => {
-    gridRef.current?.setFilterModel(null);
+  const clearFilters = useCallback(() => {
+    setEvidenceIds(null);
     setInvestigation(null);
-  }, []);
+    setInvestigationError("");
+    setSearch("");
+    api?.setFilterModel(null);
+  }, [api]);
 
   const columns = useMemo<ColDef<Transaction>[]>(() => [
-    { field: "rowKey", headerName: "Payment identity", pinned: "left", minWidth: 180, filter: true, checkboxSelection: true, headerCheckboxSelection: false },
-    { field: "status", headerName: "Lifecycle", cellRenderer: Status, filter: true, width: 140 },
-    { field: "grossCents", headerName: "Gross", valueFormatter: (p: ValueFormatterParams<Transaction, number>) => money(p.value ?? null, p.data?.currency ?? "USD"), filter: "agNumberColumnFilter", width: 125 },
-    { field: "feeCents", headerName: "Actual fee", valueFormatter: (p: ValueFormatterParams<Transaction, number>) => money(p.value ?? null, p.data?.currency ?? "USD"), width: 130 },
-    { field: "netCents", headerName: "Actual net", valueFormatter: (p: ValueFormatterParams<Transaction, number>) => money(p.value ?? null, p.data?.currency ?? "USD"), width: 130 },
-    { field: "payeeEmail", headerName: "Payee", valueFormatter: (p) => value(p.value), minWidth: 210, filter: true },
-    { field: "originalTransactionId", headerName: "Original payment ID", valueFormatter: (p) => value(p.value), minWidth: 190 },
+    { field: "rowKey", headerName: "Payment identity", pinned: "left", minWidth: 180, filter: "agSetColumnFilter" },
+    { field: "status", headerName: "Lifecycle", cellRenderer: Status, filter: "agSetColumnFilter", width: 150, enableCellChangeFlash: true },
+    { field: "grossCents", headerName: "Gross", valueFormatter: moneyFormatter, filter: "agNumberColumnFilter", width: 125 },
+    { field: "feeCents", headerName: "Actual fee", valueFormatter: moneyFormatter, filter: "agNumberColumnFilter", width: 130 },
+    { field: "netCents", headerName: "Actual net", valueFormatter: moneyFormatter, filter: "agNumberColumnFilter", width: 130 },
+    { field: "payeeEmail", headerName: "Payee", valueFormatter: textFormatter, minWidth: 210 },
+    { field: "originalTransactionId", headerName: "Original payment ID", valueFormatter: textFormatter, minWidth: 190 },
     { field: "latestEventId", headerName: "Latest webhook event", minWidth: 190 },
     { field: "eventCreatedAt", headerName: "PayPal event time", minWidth: 185, sort: "desc" },
-    { field: "jobId", headerName: "App job metadata", valueFormatter: (p) => value(p.value), minWidth: 155 },
-    { field: "lastEventSequence", headerName: "Ledger cursor", width: 135 },
-    { headerName: "Action", colId: "inspect", sortable: false, filter: false, width: 115, pinned: "right", cellRenderer: (params: { data?: Transaction }) => params.data ? <button className="row-action" onClick={() => void inspect(params.data as Transaction)}>Inspect</button> : null },
+    { field: "jobId", headerName: "App job metadata", valueFormatter: textFormatter, minWidth: 155 },
+    { field: "lastEventSequence", headerName: "Ledger cursor", width: 135, filter: "agNumberColumnFilter" },
+    {
+      headerName: "Action", colId: "inspect", sortable: false, filter: false, floatingFilter: false, width: 115, pinned: "right",
+      cellRenderer: (params: { data?: Transaction }) => params.data ? <button className="row-action" onClick={() => inspect(params.data as Transaction)}>Inspect</button> : null,
+    },
   ], [inspect]);
 
-  const gross = rows.reduce((sum, row) => sum + row.grossCents, 0);
-  const currencies = new Set(rows.map((row) => row.currency));
-  const grossLabel = currencies.size > 1 ? "Mixed currencies" : money(gross, rows[0]?.currency ?? "USD");
-  const attention = rows.filter((row) => row.status !== "SUCCESS" && row.status !== "COMPLETED").length;
+  const getContextMenuItems = useCallback((params: GetContextMenuItemsParams<Transaction>): (MenuItemDef<Transaction> | DefaultMenuItem)[] => {
+    const record = params.node?.data;
+    return [
+      "copy", "copyWithHeaders", "separator",
+      ...(record ? [{ name: "Inspect transaction history", action: () => inspect(record) }] : []),
+      "csvExport",
+    ];
+  }, [inspect]);
 
-  async function runInvestigation() {
+  const onSelectionChanged = useCallback((event: SelectionChangedEvent<Transaction>) => {
+    setSelected(event.api.getSelectedRows()[0] ?? null);
+  }, []);
+
+  const currencies = new Set(rows.map((row) => row.currency));
+  const gross = rows.reduce((sum, row) => sum + (row.grossCents ?? 0), 0);
+  const grossLabel = currencies.size > 1 ? "Mixed currencies" : formatMoney(gross, rows[0]?.currency ?? "USD");
+  const attention = rows.filter((row) => !settled(row.status)).length;
+
+  // One investigation at a time: a newer question aborts the previous one, and a late answer is dropped.
+  const investigationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => investigationRequest.current?.abort(), []);
+  const runInvestigation = useCallback(async () => {
+    investigationRequest.current?.abort();
+    const controller = new AbortController();
+    investigationRequest.current = controller;
     setInvestigating(true);
-    try { setInvestigation(await transactionApi.investigate(question)); }
-    finally { setInvestigating(false); }
-  }
+    setInvestigationError("");
+    try {
+      const result = await transactionApi.investigate(question, controller.signal);
+      if (controller.signal.aborted) return;
+      setInvestigation(result);
+    } catch (error) {
+      if (isAbort(error) || controller.signal.aborted) return;
+      setInvestigation(null);
+      setInvestigationError("The investigation could not be completed. Nothing was changed; the grid still shows the verified rows. Try again.");
+    } finally {
+      if (investigationRequest.current === controller) setInvestigating(false);
+    }
+  }, [question]);
+
+  // Only identifiers that exist in the current rows can be revealed.
+  const knownEvidence = investigation ? investigation.supportingTransactionIds.filter((id) => byKey.has(id)) : [];
+  const unknownEvidence = investigation ? investigation.supportingTransactionIds.length - knownEvidence.length : 0;
 
   return <main className="transaction-page">
     <section className="transaction-hero">
@@ -123,28 +216,26 @@ export default function TransactionsDashboard() {
     {view === "operations" ? <>
       <section className="grid-shell" aria-label="Verified transaction operations">
         <div className="grid-toolbar">
-          <label>Search every field<input aria-label="Search transactions" placeholder="ID, email, event…" onChange={(event) => gridRef.current?.setGridOption("quickFilterText", event.target.value)} /></label>
+          <label>Search every field<input aria-label="Search transactions" placeholder="ID, email, event…" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
           <label><input type="checkbox" checked={attentionOnly} onChange={(event) => setAttentionOnly(event.target.checked)} /> Needs attention</label>
-          <button onClick={() => gridRef.current?.resetColumnState()}>Reset columns</button>
-          <button onClick={clearEvidenceFilter}>Clear filters</button>
-          <button onClick={() => gridRef.current?.exportDataAsCsv({ fileName: "settle-visible-transactions.csv" })}>Export visible CSV</button>
-          <button disabled={!selected} onClick={() => selected && void inspect(selected)}>Open selected</button>
+          <button onClick={() => api?.resetColumnState()}>Reset columns</button>
+          <button onClick={clearFilters}>Clear filters</button>
+          <button onClick={() => api?.exportDataAsCsv({ fileName: "settle-visible-transactions.csv" })}>Export visible CSV</button>
+          <button disabled={!selected} onClick={() => selected && inspect(selected)}>Open selected</button>
         </div>
-        <div className="ag-theme-alpine transaction-grid">
+        <div className="transaction-grid">
           <AgGridReact<Transaction>
-            rowData={[]} columnDefs={columns} getRowId={(params) => params.data.rowKey}
-            defaultColDef={{ sortable: true, resizable: true, filter: true, floatingFilter: true }}
-            rowSelection={{ mode: "singleRow", checkboxes: true, enableClickSelection: true }}
-            isExternalFilterPresent={() => attentionOnly}
-            doesExternalFilterPass={(node) => !!node.data && node.data.status !== "SUCCESS" && node.data.status !== "COMPLETED"}
-            onGridReady={(event: GridReadyEvent<Transaction>) => { gridRef.current = event.api; event.api.applyTransaction({ add: rows }); }}
-            onSelectionChanged={(event: SelectionChangedEvent<Transaction>) => {
-              const node = event.selectedNodes?.[0]; if (node?.data) setSelected(node.data);
-            }}
-            onFilterChanged={(event) => event.api.redrawRows()}
-            pagination={true} paginationPageSize={25} paginationPageSizeSelector={[25, 50, 100]}
-            sideBar={{ toolPanels: [{ id: "columns", labelDefault: "Columns", labelKey: "columns", iconKey: "columns", toolPanel: "agColumnsToolPanel" }, { id: "filters", labelDefault: "Filters", labelKey: "filters", iconKey: "filter", toolPanel: "agFiltersToolPanel" }] }}
-            getContextMenuItems={(params) => ["copy", "copyWithHeaders", "separator", ...(params.node?.data ? [{ name: "Inspect transaction history", action: () => void inspect((params.node as { data: Transaction }).data) }] : []), "export"]}
+            theme={settleGridTheme}
+            rowData={rows} columnDefs={columns} getRowId={getRowId}
+            defaultColDef={defaultColDef}
+            rowSelection={rowSelection} selectionColumnDef={selectionColumnDef}
+            quickFilterText={search}
+            isExternalFilterPresent={isExternalFilterPresent} doesExternalFilterPass={doesExternalFilterPass}
+            onGridReady={onGridReady} onGridPreDestroyed={onGridPreDestroyed}
+            onSelectionChanged={onSelectionChanged}
+            pagination={true} paginationPageSize={25} paginationPageSizeSelector={pageSizes}
+            sideBar={sideBar}
+            getContextMenuItems={getContextMenuItems}
           />
         </div>
         <div className="grid-footer"><span>{rows.length} projected rows · persisted cursor {cursor}</span><span>Sort, filter, hide or pin columns; CSV respects visible rows.</span></div>
@@ -153,19 +244,21 @@ export default function TransactionsDashboard() {
       <section className="investigator" aria-label="Evidence-grounded transaction investigation">
         <div className="section-heading"><div><p className="eyebrow">EVIDENCE-GROUNDED INVESTIGATION</p><h2>Ask the ledger, not a generic chatbot.</h2></div><span>{investigation?.source ?? "Deterministic by default"}</span></div>
         <div className="question-row"><input aria-label="Investigation question" value={question} onChange={(event) => setQuestion(event.target.value)} /><button disabled={investigating || question.trim().length < 3} onClick={() => void runInvestigation()}>{investigating ? "Querying…" : "Investigate"}</button></div>
-        {investigation && <div className="investigation-result"><p className="answer">{investigation.answer}</p><div className="fact-list">{investigation.facts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong><small>{fact.evidence.length} evidence IDs</small></div>)}</div>{investigation.hypotheses.map((hypothesis) => <p className="hypothesis" key={hypothesis}><strong>Hypothesis:</strong> {hypothesis}</p>)}<button disabled={!investigation.supportingTransactionIds.length} onClick={() => {
-          gridRef.current?.setFilterModel({ rowKey: { filterType: "set", values: investigation.supportingTransactionIds } });
+        {investigationError && <p role="alert" className="error-text">{investigationError}</p>}
+        {investigation && <div className="investigation-result"><p className="answer">{investigation.answer}</p><div className="fact-list">{investigation.facts.map((fact) => <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong><small>{fact.evidence.length} evidence IDs</small></div>)}</div>{investigation.hypotheses.map((hypothesis) => <p className="hypothesis" key={hypothesis}><strong>Hypothesis:</strong> {hypothesis}</p>)}<button disabled={!knownEvidence.length} onClick={() => {
+          setEvidenceIds(knownEvidence);
           setView("operations");
-        }}>Reveal {investigation.supportingTransactionIds.length} evidence rows in grid</button><p className="muted">Generated {new Date(investigation.generatedAt).toLocaleString()} · supporting IDs are computed by the server.</p></div>}
+        }}>Reveal {knownEvidence.length} evidence rows in grid</button>{unknownEvidence > 0 && <p className="muted" role="status">{unknownEvidence} referenced record(s) are not in the current data and were left out.</p>}<p className="muted">Generated {new Date(investigation.generatedAt).toLocaleString()} · supporting IDs are computed by the server.</p></div>}
       </section>
 
-      <aside className={`history-drawer ${selected ? "open" : ""}`} aria-label="Transaction history">
-        {selected ? <><div className="section-heading"><div><p className="eyebrow">IMMUTABLE EVENT HISTORY</p><h2>{selected.rowKey}</h2></div><button aria-label="Close history" onClick={() => setSelected(null)}>×</button></div>
-          <div className="identity-grid"><div><span>Original payment</span><strong>{value(selected.originalTransactionId)}</strong></div><div><span>Latest event</span><strong>{selected.latestEventId}</strong></div><div><span>Payment created</span><strong>{value(selected.transactionTimestamp)}</strong></div><div><span>Event received</span><strong>{selected.eventReceivedAt}</strong></div></div>
-          <div className="history-facts"><span>Status <strong>{selected.status}</strong></span><span>Gross <strong>{money(selected.grossCents, selected.currency)}</strong></span><span>Fee <strong>{money(selected.feeCents, selected.currency)}</strong></span><span>Net <strong>{money(selected.netCents, selected.currency)}</strong></span></div>
+      <aside className={`history-drawer ${inspectedRow ? "open" : ""}`} aria-label="Transaction history">
+        {inspectedRow ? <><div className="section-heading"><div><p className="eyebrow">IMMUTABLE EVENT HISTORY</p><h2>{inspectedRow.rowKey}</h2></div><button aria-label="Close history" onClick={() => setInspected(null)}>×</button></div>
+          <div className="identity-grid"><div><span>Original payment</span><strong>{text(inspectedRow.originalTransactionId)}</strong></div><div><span>Latest event</span><strong>{inspectedRow.latestEventId}</strong></div><div><span>Payment created</span><strong>{text(inspectedRow.transactionTimestamp)}</strong></div><div><span>Event received</span><strong>{inspectedRow.eventReceivedAt}</strong></div></div>
+          <div className="history-facts"><span>Status <strong>{inspectedRow.status}</strong></span><span>Gross <strong>{formatMoney(inspectedRow.grossCents, inspectedRow.currency)}</strong></span><span>Fee <strong>{formatMoney(inspectedRow.feeCents, inspectedRow.currency)}</strong></span><span>Net <strong>{formatMoney(inspectedRow.netCents, inspectedRow.currency)}</strong></span></div>
           {historyError && <p role="alert">{historyError}</p>}
-          <ol className="timeline">{history.map((event) => <li key={event.sequence}><span className="sequence">#{event.sequence}</span><div><strong>{event.eventType}</strong><p>{event.outcome} · {event.eventId}</p><time>PayPal {event.eventCreatedAt}<br />Received {event.receivedAt}</time></div></li>)}</ol>
-          {!history.length && !historyError && <p>Loading immutable events…</p>}
+          {history && <ol className="timeline">{history.map((event) => <li key={event.sequence}><span className="sequence">#{event.sequence}</span><div><strong>{event.eventType}</strong><p>{event.outcome} · {event.eventId}{event.correlationId ? ` · transmission ${event.correlationId}` : ""}</p><time>PayPal {event.eventCreatedAt}<br />Received {event.eventReceivedAt}</time></div></li>)}</ol>}
+          {history && history.length === 0 && <p>No events are stored for this record.</p>}
+          {!history && !historyError && <p>Loading immutable events…</p>}
         </> : <p>Select a row to inspect its payment and webhook identities.</p>}
       </aside>
     </> : <StudioAnalytics rows={rows} />}

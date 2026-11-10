@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node --experimental-strip-types src/server/server.ts",
     "test": "node --test tests/*.test.ts",
+    "test:app": "npm --prefix app test",
     "test:e2e": "playwright test",
+    "typecheck": "npm --prefix app exec -- tsc -p tsconfig.server.json",
+    "verify": "npm run typecheck && npm test && npm --prefix app test && npm --prefix app run build && npm run test:e2e",
     "inspect:db": "node --experimental-strip-types scripts/inspect-product-db.ts"
   },
   "devDependencies": {
