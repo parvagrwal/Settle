@@ -27,7 +27,9 @@ import { groqScenarioSelector } from "./groqScenarioSelector.ts";
 import { requireOwner } from "./ownerAuth.ts";
 import { executeApprovedPlan } from "./planExecution.ts";
 import { FinancialStore } from "./financialStore.ts";
-import { paypalDecimalToMinorUnits, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { confirmDuePayments, paypalDecimalToMinorUnits, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { buildFinancialReport } from "./financialReport.ts";
+import { DEFAULT_CONFIRMATION_POLICY } from "./paymentState.ts";
 import { createHash } from "node:crypto";
 import type { ProductStore } from "./productStore.ts";
 import { handleProductRoute } from "./productRoutes.ts";
@@ -42,6 +44,16 @@ export interface GridRow {
   status: string;
   reason: string | null;
   payout_batch_id: string | null;
+  /** Where the record came from. */
+  record_origin: "application" | "seed";
+  /** What can be claimed about this row, in one sentence. */
+  provenance_label: string;
+  /** True only for rows from data/seed.json. They are never counted. */
+  seeded: boolean;
+  fee_estimate_cents: number | null;
+  provider_fee_cents: number | null;
+  fee_state: "estimate_only" | "provider_reported" | "unavailable" | "not_applicable";
+  execution_run_id: string | null;
 }
 
 export interface SettleStore {
@@ -61,17 +73,34 @@ export interface SettleServer {
 }
 
 export function gridRows(jobs: Job[]): GridRow[] {
-  return jobs.map((job) => ({
-    job_id: job.job_id,
-    freelancer_id: job.freelancer_id,
-    amount_cents: job.amount_cents,
-    fee_cents: job.fee_cents ?? null,
-    due: job.due ?? null,
-    priority: job.priority ?? null,
-    status: job.status,
-    reason: job.decision_reason,
-    payout_batch_id: job.payout_batch_id,
-  }));
+  return jobs.map((job) => {
+    const seeded = job.origin === "seed";
+    const providerFee = job.fee_cents ?? null;
+    return {
+      job_id: job.job_id,
+      freelancer_id: job.freelancer_id,
+      amount_cents: job.amount_cents,
+      fee_cents: providerFee,
+      due: job.due ?? null,
+      priority: job.priority ?? null,
+      status: job.status,
+      reason: job.decision_reason,
+      payout_batch_id: job.payout_batch_id,
+      record_origin: seeded ? "seed" : "application",
+      provenance_label: seeded
+        ? job.status === "historical_reference"
+          ? "Seeded demonstration row; the claimed batch id is not verified by any artifact in this repository"
+          : "Seeded demonstration row; never submitted to PayPal"
+        : providerFee !== null
+          ? "Application record; fee amount reported by PayPal"
+          : "Application record; no provider-reported fee",
+      seeded,
+      fee_estimate_cents: null,
+      provider_fee_cents: providerFee,
+      fee_state: seeded ? "not_applicable" : providerFee !== null ? "provider_reported" : "unavailable",
+      execution_run_id: null,
+    };
+  });
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -204,13 +233,15 @@ export function createSettleServer(opts: {
         job.paypal_transaction_id = item?.transactionId ?? job.paypal_transaction_id ?? null;
         job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
         job.decision_reason = null;
-      } else if (payment.status === "pending" || payment.status === "onhold") {
+      } else if (payment.status === "awaiting_confirmation" || payment.status === "pending" || payment.status === "onhold") {
         const item = financial.getPayoutItem(payment.paymentId);
         job.status = "processing";
         job.payout_batch_id = item?.payoutBatchId ?? financial.getAttemptBatchId(payment.paymentId) ?? job.payout_batch_id;
         job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
         job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
-        job.decision_reason = `Provider item ${payment.status.toUpperCase()}: processing at PayPal — reconcile or wait for webhook`;
+        job.decision_reason = payment.status === "awaiting_confirmation"
+          ? "PayPal accepted the batch; the payout item has not settled yet. Confirmation is scheduled; this is not a failure."
+          : `Provider item ${payment.status.toUpperCase()}: processing at PayPal — reconcile or wait for webhook`;
       } else if (payment.status === "unclaimed") {
         const item = financial.getPayoutItem(payment.paymentId);
         job.status = "unclaimed";
@@ -218,6 +249,9 @@ export function createSettleServer(opts: {
         job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
         job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
         job.decision_reason = "Provider item UNCLAIMED: waiting for recipient or reconcile";
+      } else if (payment.status === "reconciliation_required") {
+        job.status = "blocked";
+        job.decision_reason = "ReconciliationRequired: confirmation budget exhausted; reconcile provider state before retrying";
       } else if (payment.status === "outcome_unknown" || payment.status === "submitted" || payment.status === "reserved") {
         job.status = "blocked";
         job.decision_reason = "OutcomeUnknown: reconcile provider state before retrying";
@@ -241,14 +275,9 @@ export function createSettleServer(opts: {
     }
   };
   syncLegacyFromFinancial();
-  // Migrate already owner-approved jobs once regardless of whether the product
-  // workspace store is attached; unpaid demos are authorization records, never
-  // provider payment evidence.
-  for (const job of store.jobs.filter((row) => row.approval_state === "approved" && row.status !== "paid" && row.amount_cents <= financial.getPolicy().perPaymentCapCents)) {
-    const id = recipientId(job.paypal_email);
-    if (!financial.getRecipient(id)) financial.verifyRecipient({ recipientId: id, email: job.paypal_email, actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
-    if (!financial.getPaymentByJob(job.job_id)) financial.approvePayment({ jobId: job.job_id, recipientId: id, amountCents: job.amount_cents, currency: "USD", actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
-  }
+  // There is deliberately no startup bridge from `approval_state === "approved"`
+  // to a payment identity. A payment identity is created only by an explicit
+  // owner approval of an application-origin job. Seed rows stay seed rows.
 
   const server = createServer(async (req, res) => {
     try {
@@ -262,7 +291,22 @@ export function createSettleServer(opts: {
         return;
       }
       if (req.method === "GET" && path === "/api/grid") {
-        sendJson(res, 200, { rows: gridRows(store.jobs) });
+        const rows = gridRows(store.jobs).map((row) => {
+          const payment = financial.getPaymentByJob(row.job_id);
+          if (!payment) return row;
+          const fees = financial.getFeeRecord(payment.paymentId);
+          return {
+            ...row,
+            fee_estimate_cents: fees.estimate?.estimatedFeeMinor ?? null,
+            provider_fee_cents: fees.provider?.reportedFeeMinor ?? null,
+            fee_state: fees.provider ? "provider_reported" : fees.estimate ? "estimate_only" : "unavailable",
+            execution_run_id: payment.executionRunId,
+            provenance_label: row.seeded
+              ? row.provenance_label
+              : `Application record, ${payment.status.replace(/_/g, " ")}${fees.provider ? ", provider-reported fee" : fees.estimate ? ", estimated fee only" : ""}`,
+          };
+        });
+        sendJson(res, 200, { rows, note: "record_origin tells you what each row is. Seeded rows are never counted in any monetary total." });
         return;
       }
       if (req.method === "GET" && path === "/api/audit") {
@@ -313,9 +357,45 @@ export function createSettleServer(opts: {
         const batchIds = Array.isArray(body.batchIds)
           ? body.batchIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
           : undefined;
-        const reconciled = await reconcilePayPal({ store: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn, batchIds });
+        const idempotentReplay = body.idempotentReplay === true;
+        const reconciled = await reconcilePayPal({ store: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn, batchIds, idempotentReplay });
         syncLegacyFromFinancial();
-        sendJson(res, 200, { ...reconciled, cap: financial.getCapSummary(new Date().toISOString()) }); return;
+        sendJson(res, 200, { ...reconciled, idempotentReplay, cap: financial.getCapSummary(new Date().toISOString()) }); return;
+      }
+      if (req.method === "POST" && path === "/api/financial/confirm") {
+        const owner = requireOwner(req); if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        if (opts.baseUrl === undefined || opts.token === undefined) {
+          sendJson(res, 503, { error: "confirmation is not configured: sandbox credentials are missing" }); return;
+        }
+        const sweep = await confirmDuePayments({
+          store: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn,
+          policy: DEFAULT_CONFIRMATION_POLICY,
+        });
+        syncLegacyFromFinancial();
+        sendJson(res, 200, { ...sweep, cap: financial.getCapSummary(new Date().toISOString()) }); return;
+      }
+      if (req.method === "GET" && path === "/api/financial/report") {
+        const at = new Date().toISOString();
+        sendJson(res, 200, buildFinancialReport({
+          financial,
+          at,
+          providerConfigured: opts.baseUrl !== undefined && opts.token !== undefined,
+          providerConnected: opts.baseUrl !== undefined && opts.token !== undefined,
+          seedRecordCount: store.jobs.filter((job) => job.origin === "seed").length,
+        }));
+        return;
+      }
+      if (req.method === "GET" && path === "/api/financial/control") {
+        const owner = requireOwner(req); if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        sendJson(res, 200, financial.getControlState()); return;
+      }
+      if (req.method === "POST" && path === "/api/financial/control") {
+        const owner = requireOwner(req); if (!owner.ok) { sendJson(res, owner.status, { error: owner.error }); return; }
+        const body = await readJsonBody(req);
+        if (typeof body.emergencyStop !== "boolean") { sendJson(res, 400, { error: "emergencyStop must be true or false" }); return; }
+        const reason = typeof body.reason === "string" && body.reason.trim() !== "" ? body.reason.trim() : "owner changed the emergency stop";
+        financial.setEmergencyStop({ stopped: body.emergencyStop, actor: { actorId: "owner", role: "owner" }, reason, at: new Date().toISOString() });
+        sendJson(res, 200, financial.getControlState()); return;
       }
 
       if (req.method === "GET" && path === "/api/transactions") {
@@ -477,6 +557,13 @@ export function createSettleServer(opts: {
           sendJson(res, 404, { error: `no job named ${jobId}` });
           return;
         }
+        if (job.origin === "seed") {
+          sendJson(res, 409, {
+            error: "DEMO_RECORD_NOT_PAYABLE: this row is seeded demonstration data. It is not a PayPal payment and cannot be approved, reserved or submitted. Use the operational workspace for a real sandbox payout.",
+            code: "DEMO_RECORD_NOT_PAYABLE",
+          });
+          return;
+        }
         // Owner confirm-once: a first payment to a new email waits until
         // the owner approves it here. Approval adds the email to the
         // allowlist and marks the job approved, and the audit trail
@@ -505,12 +592,6 @@ export function createSettleServer(opts: {
       }
 
       if (req.method === "POST" && path === "/api/pay") {
-        if (opts.baseUrl === undefined || opts.token === undefined) {
-          sendJson(res, 503, {
-            error: "pay is not configured: sandbox credentials are missing, set them in local .env only",
-          });
-          return;
-        }
         // Ownership is proved here, before any payment runs. The loop
         // and the billing step below both receive that proof, so the
         // decision check sees a real authorised actor, not a hard-coded one.
@@ -549,7 +630,7 @@ export function createSettleServer(opts: {
         // be paid. The over-cap job waits for the owner and is never a
         // candidate, so the model never sees it.
         const candidates = store.jobs.filter(
-          (job) => job.approval_state === "approved" && job.status === "waiting",
+          (job) => job.origin !== "seed" && job.approval_state === "approved" && job.status === "waiting",
         );
         // Owner selection: the dashboard sends the job ids the owner
         // picked. Unknown ids are a client error; known jobs the check
@@ -565,6 +646,14 @@ export function createSettleServer(opts: {
           const unknown = selectedIds.filter((id) => !store.jobs.some((job) => job.job_id === id));
           if (unknown.length > 0) {
             sendJson(res, 400, { error: `selected job ${unknown[0]} does not exist` });
+            return;
+          }
+          const seededSelection = selectedIds.filter((id) => store.jobs.find((job) => job.job_id === id)?.origin === "seed");
+          if (seededSelection.length > 0) {
+            sendJson(res, 409, {
+              error: `DEMO_RECORD_NOT_PAYABLE: ${seededSelection.join(", ")} is seeded demonstration data. It cannot be selected for payment.`,
+              code: "DEMO_RECORD_NOT_PAYABLE",
+            });
             return;
           }
         }
@@ -610,7 +699,23 @@ export function createSettleServer(opts: {
             }));
           }
         }
+        // The provider is checked after the request has been validated, so a
+        // seeded selection and a missing token are answered with their own
+        // reasons instead of a generic "not configured". No provider call can
+        // happen without credentials, because this guard precedes the loop.
+        if (opts.baseUrl === undefined || opts.token === undefined) {
+          sendJson(res, 503, {
+            error: "pay is not configured: sandbox credentials are missing, set them in local .env only",
+          });
+          return;
+        }
         let ambiguousExecution = false;
+        let executionRunId: string | null = null;
+        // Items the provider refused after the policy accepted them. They are
+        // not policy rejections, but they must be visible in the response and
+        // the audit trail; otherwise a failed payout looks like a job that was
+        // never selected.
+        const providerRefusals: Array<{ job_id: string; label: string; reason: string }> = [];
         const processingJobs: Job[] = [];
         const recordedProviderItems: Array<{ job_id: string; payout_batch_id: string | null; payout_item_id: string | null; transaction_id: string | null; fee_cents: number | null; status: string }> = [];
         const result: AgentLoopResult = await runAgentLoop({
@@ -632,9 +737,51 @@ export function createSettleServer(opts: {
             const rejected: Job[] = [];
             const providerItems: Array<ReturnType<FinancialStore["getPayoutItem"]>> = [];
             const providerBatches: string[] = [];
-            for (const job of selectedJobs) {
+            // The run exists before the first provider call, so the owner can
+            // refer to one durable id when the response is lost.
+            const run = financial.createExecutionRun({
+              kind: "legacy",
+              requestedBy: "owner",
+              actorRole: "owner",
+              policyVersion: financial.getPolicy().version,
+              at: new Date().toISOString(),
+              note: `selected ${selectedJobs.length} job(s): ${selectedJobs.map((job) => job.job_id).join(", ")}`,
+            });
+            executionRunId = run.runId;
+            for (const [ordinal, job] of selectedJobs.entries()) {
               try {
+                // A job in the legacy dashboard carries its own approval record.
+                // The owner's Pay click is the owner action that turns that
+                // record into a ledger payment identity, once, here. Seed rows
+                // never reach this point (the route filters them out).
+                if (job.origin !== "seed" && !financial.getPaymentByJob(job.job_id)) {
+                  const identity = recipientId(job.paypal_email);
+                  if (!financial.getRecipient(identity)) {
+                    financial.verifyRecipient({ recipientId: identity, email: job.paypal_email, actor: { actorId: "owner", role: "owner" }, at: new Date().toISOString() });
+                  }
+                  const payment = financial.approvePayment({
+                    jobId: job.job_id,
+                    recipientId: identity,
+                    requestedRecipientEmail: job.paypal_email,
+                    amountCents: job.amount_cents,
+                    currency: "USD",
+                    actor: { actorId: "owner", role: "owner" },
+                    at: new Date().toISOString(),
+                  });
+                  store.audit.write({
+                    actor: "owner",
+                    job_id: job.job_id,
+                    action: "accepted",
+                    reason: `payment identity created for owner-approved application job ${job.job_id} (policy v${financial.getPolicy().version})`,
+                    amount_cents: job.amount_cents,
+                    payout_batch_id: null,
+                    paypal_transaction_id: null,
+                  });
+                  void payment;
+                }
                 const sub = await submitApprovedPayment({ store: financial, jobId: job.job_id, baseUrl: opts.baseUrl!, token: opts.token!, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
+                const runPaymentId = financial.getPaymentByJob(job.job_id)?.paymentId;
+                if (runPaymentId) financial.attachPaymentToRun({ runId: run.runId, paymentId: runPaymentId, ordinal });
                 providerItems.push(sub.item);
                 if (sub.batchStatus) providerBatches.push(sub.batchStatus);
                 const resolvedBatchId = sub.item?.payoutBatchId ?? sub.payoutBatchId ?? null;
@@ -654,6 +801,10 @@ export function createSettleServer(opts: {
                   job.status = "paid";
                   job.decision_reason = null;
                   accepted.push(job);
+                } else if (sub.status === "awaiting_confirmation") {
+                  job.status = "processing";
+                  job.decision_reason = "PayPal accepted the batch; the payout item has not settled yet. Confirmation is scheduled; this is not a failure.";
+                  processingJobs.push(job);
                 } else if (sub.status === "pending" || sub.status === "onhold") {
                   job.status = "processing";
                   job.decision_reason = `Provider item ${sub.status.toUpperCase()}: processing at PayPal — reconcile or wait for webhook`;
@@ -666,6 +817,20 @@ export function createSettleServer(opts: {
                   job.status = sub.status === "failed" ? "failed" : "blocked";
                   job.decision_reason = `Provider item ${sub.item?.status ?? sub.status.toUpperCase()}: no payment confirmed`;
                   rejected.push(job);
+                  providerRefusals.push({
+                    job_id: job.job_id,
+                    label: `PROVIDER_ITEM_${sub.item?.status ?? sub.status.toUpperCase()}`,
+                    reason: job.decision_reason,
+                  });
+                  store.audit.write({
+                    actor: "agent",
+                    job_id: job.job_id,
+                    action: "rejected",
+                    reason: job.decision_reason,
+                    amount_cents: job.amount_cents,
+                    payout_batch_id: job.payout_batch_id,
+                    paypal_transaction_id: null,
+                  });
                 }
               } catch (error) {
                 const state = financial.getPaymentByJob(job.job_id)?.status;
@@ -674,11 +839,32 @@ export function createSettleServer(opts: {
                   job.status = "blocked";
                   job.decision_reason = "OutcomeUnknown: reconcile provider state before retrying";
                   rejected.push(job);
+                  providerRefusals.push({ job_id: job.job_id, label: "OUTCOME_UNKNOWN", reason: job.decision_reason });
+                  store.audit.write({
+                    actor: "agent",
+                    job_id: job.job_id,
+                    action: "rejected",
+                    reason: job.decision_reason,
+                    amount_cents: job.amount_cents,
+                    payout_batch_id: job.payout_batch_id,
+                    paypal_transaction_id: null,
+                  });
                   break;
                 }
                 throw error;
               }
             }
+            const runStatus = ambiguousExecution
+              ? "outcome_unknown"
+              : processingJobs.length > 0 || accepted.length > 0
+                ? (accepted.length === selectedJobs.length ? "succeeded" : "partial")
+                : rejected.length > 0 ? "failed" : "failed";
+            financial.finishExecutionRun({
+              runId: run.runId,
+              status: runStatus,
+              note: `${accepted.length} confirmed, ${processingJobs.length} awaiting confirmation, ${rejected.length} not executed`,
+              at: new Date().toISOString(),
+            });
             const failedBatchStatus = providerBatches.length > 0 && providerBatches.every((s) => s === "DENIED") ? "DENIED" : "FAILED";
             const batchStatus = ambiguousExecution
               ? "OUTCOME_UNKNOWN"
@@ -795,9 +981,21 @@ export function createSettleServer(opts: {
         }
         const reportedFees = recordedProviderItems.map((entry) => entry.fee_cents).filter((v): v is number => v !== null);
         const actualFeeCents = reportedFees.length > 0 ? reportedFees.reduce((sum, fee) => sum + fee, 0) : null;
+        const feeRecords = recordedProviderItems
+          .map((entry) => {
+            const payment = financial.getPaymentByJob(entry.job_id);
+            if (!payment) return null;
+            return { job_id: entry.job_id, ...financial.getFeeRecord(payment.paymentId) };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
         sendJson(res, ambiguousExecution ? 202 : 200, {
+          execution_run: executionRunId === null ? null : financial.getExecutionRun(executionRunId),
+          fee_records: feeRecords,
           accepted: result.accepted.map((job) => job.job_id),
-          rejected: result.rejected.map((r) => ({ job_id: r.proposalJobId, label: r.label, reason: r.reason })),
+          rejected: [
+            ...result.rejected.map((r) => ({ job_id: r.proposalJobId, label: r.label, reason: r.reason })),
+            ...providerRefusals,
+          ],
           processing: processingJobs.map((job) => ({
             job_id: job.job_id,
             payout_batch_id: job.payout_batch_id,
@@ -841,7 +1039,7 @@ export function createSettleServer(opts: {
       sendJson(res, 404, { error: `no route ${req.method} ${path}` });
     } catch (err) {
       const message = err instanceof Error ? err.message : "unknown error";
-      const conflict = /^(CAP_EXCEEDED:|SUBMISSION_CONFLICT:|provider reconciliation is stale|payment outcome is unknown|payment is not owner-approved|payment cannot be reserved)/.test(message);
+      const conflict = /^(CAP_EXCEEDED:|SUBMISSION_CONFLICT:|DEMO_RECORD_NOT_PAYABLE|EMERGENCY_STOP:|provider reconciliation is stale|payment outcome is unknown|payment is not owner-approved|payment cannot be reserved)/.test(message);
       sendJson(res, conflict ? 409 : 500, { error: message });
     }
   });

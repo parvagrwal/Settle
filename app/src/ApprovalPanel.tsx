@@ -44,14 +44,17 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
   const activeReservationsCents = caps?.activeReservationsCents ?? 0;
   const committedCents = eligibleSpendCents + activeReservationsCents;
   const remainingCents = caps?.remainingCents ?? Math.max(0, weeklyCap - committedCents);
-  const needsApproval = jobs.filter((job) => job.approval_state !== "approved");
+  // Seeded demonstration rows are never approvable: the server refuses them,
+  // and showing the button would promise an operation that cannot happen.
+  const needsApproval = jobs.filter((job) => job.approval_state !== "approved" && job.origin !== "seed");
+  const seedRowCount = rows.filter((row) => row.seeded).length;
   // Only approved, waiting jobs can be paid: the count on the button must
   // match what the pay run will actually pay, so a job that still needs
   // approval is never counted here.
   const approvedIds = new Set(
     jobs.filter((job) => job.approval_state === "approved").map((job) => job.job_id),
   );
-  const payableRows = rows.filter((row) => row.status === "waiting" && approvedIds.has(row.job_id));
+  const payableRows = rows.filter((row) => row.status === "waiting" && approvedIds.has(row.job_id) && !row.seeded);
   const payableTotalCents = payableRows.reduce((sum, row) => sum + row.amount_cents, 0);
   const reportedFeeCents = paidRows.reduce((sum, row) => sum + (row.fee_cents ?? 0), 0);
   const hasReportedFees = paidRows.some((row) => row.fee_cents !== null);
@@ -76,6 +79,13 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
           ? `Provider state fresh (${caps.lastSuccessfulReconciliation ?? "reconciled"}).`
           : "Provider state not yet reconciled in this window (refreshed automatically before submission)."}
       </p>
+      {seedRowCount > 0 && (
+        <p className="panel-line" role="status">
+          {seedRowCount} seeded demonstration row(s) are on screen for illustration. They are excluded
+          from every total, cannot be approved, and are refused before any PayPal call. This tab cannot
+          submit a payment from a seeded row.
+        </p>
+      )}
       {!ownerTokenSet && (
         <p className="panel-line" role="status">
           Enter the owner token at the top of the page to approve and pay. Approve and pay stay off
@@ -122,6 +132,7 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
                   {row.due ? ` — due ${row.due}` : ""}
                   {row.priority ? ` — ${row.priority} priority` : ""}
                   {row.reason ? ` — ${row.reason}` : ""}
+                  {row.seeded ? " — seeded demonstration row, not payable" : ""}
                   {overPayment > 0 ? ` Over the per-payment cap by ${usd(overPayment)}.` : ""}
                   {overWeek > 0 ? ` Over the weekly cap by ${usd(overWeek)}.` : ""}
                   {overPayment === 0 && overWeek === 0

@@ -19,6 +19,12 @@ export function statusLabel(status: string): string {
       return "Failed";
     case "outcome_unknown":
       return "Outcome unknown — reconcile required";
+    case "awaiting_confirmation":
+      return "Awaiting PayPal confirmation";
+    case "reconciliation_required":
+      return "Reconciliation required";
+    case "historical_reference":
+      return "Seeded historical reference — not verified";
     default:
       return status;
   }

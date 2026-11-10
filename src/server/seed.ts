@@ -1,14 +1,13 @@
 // Seed jobs for the dashboard server — the demo jobs the dashboard shows
 // on first load. The jobs live in data/seed.json, which is the single
 // source for them; this file only stamps the times and puts in the
-// receiver email from the server settings. Four paid rows are real
-// sandbox receipts from live test runs on 2026-11-07: batch
-// RBZ4V8LCSSK5W (two $1.00 payments) and batch JHG24Y874LK58 (two
-// $1.00 payments). The waiting rows are seeded demo jobs, so the pay
-// flow can be shown live. One seeded job is over the $200 per-payment
-// cap on purpose, so the waiting-for-owner state is visible with its
-// reason and the amount over the cap. One seeded job is not approved
-// yet, so the approve flow can be shown live.
+// receiver email from the server settings. Every row here is a SEED record:
+// it is stamped origin: "seed" and is refused by every payment path before a
+// PayPal call is made. Four rows claim a past sandbox batch; this repository
+// holds no artifact for those batch ids, so they are labelled
+// `historical_reference` and are never counted as payment evidence. The single
+// artifact that is checked in (evidence/payouts-first-test) describes a
+// different batch and is shown separately as fee evidence.
 // Sandbox only, test money, no real money moves.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -79,6 +78,7 @@ export function seedJobs(receiverEmail: string, nowMs: number = Date.now()): Job
       ? new Date(nowMs + row.due_days_from_now * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       : (row.due ?? null),
     priority: (row.priority ?? null) as Job["priority"],
+    origin: "seed",
     approval_state: row.approval_state as Job["approval_state"],
     approved_at:
       row.approval_state === "not_approved"

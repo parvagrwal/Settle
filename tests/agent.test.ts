@@ -386,7 +386,12 @@ test("routes: pay with no sandbox credentials returns 503 and names the missing 
   const app = createSettleServer({ jobs: [makeJob()], allowlistedEmails: makeAllowlist() });
   const port = await app.listen(0);
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/pay`, { method: "POST" });
+    // Ownership is checked first: an unauthenticated call is a 401 whatever the
+    // provider configuration is. With the owner token, the missing-credentials
+    // answer is explicit and nothing is submitted.
+    const anonymous = await fetch(`http://127.0.0.1:${port}/api/pay`, { method: "POST" });
+    assert.equal(anonymous.status, 401);
+    const res = await fetch(`http://127.0.0.1:${port}/api/pay`, { method: "POST", headers: OWNER_HEADERS });
     assert.equal(res.status, 503);
     const body = (await res.json()) as { error: string };
     assert.match(body.error, /sandbox credentials are missing/);

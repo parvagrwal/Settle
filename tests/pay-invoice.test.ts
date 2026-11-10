@@ -23,6 +23,7 @@ import { createSettleServer } from "../src/server/routes.ts";
 process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
 const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 import { billApprovedJobs } from "../src/server/invoicing.ts";
 import type { Job } from "../src/server/jobs.ts";
 
@@ -149,7 +150,7 @@ async function payOnce(port: number): Promise<PayResponse> {
 
 test("pay bills only the jobs the payout paid, client email from the server settings", async () => {
   const mock = makePayPalMock();
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -202,7 +203,7 @@ test("pay bills only the jobs the payout paid, client email from the server sett
 
 test("second pay click bills nothing new, no second invoice is created", async () => {
   const mock = makePayPalMock();
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -269,7 +270,7 @@ test("billing the same jobs twice rejects the second bill as already billed", as
 
 test("failed invoice does not unpay or fail the payout, invoice is manual", async () => {
   const mock = makePayPalMock({ invoiceFails: true });
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -306,7 +307,7 @@ test("failed invoice does not unpay or fail the payout, invoice is manual", asyn
 
 test("no client email configured: payout works, invoice skipped, no invoicing call", async () => {
   const mock = makePayPalMock();
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -331,7 +332,7 @@ test("no client email configured: payout works, invoice skipped, no invoicing ca
 
 test("denied batch makes no invoice call, invoice skipped", async () => {
   const mock = makePayPalMock({ batchStatus: "DENIED" });
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -356,7 +357,7 @@ test("denied batch makes no invoice call, invoice skipped", async () => {
 
 test("jobs already invoiced are not billed again: no new invoice, no invoice call", async () => {
   const mock = makePayPalMock();
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),

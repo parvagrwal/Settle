@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { ProductPermissionError, ProductStore, type ProductUser, type VerificationState } from "./productStore.ts";
 import { extractPayoutItemFeeCents, type FinancialStore } from "./financialStore.ts";
 import { verifyOwnerToken } from "./ownerAuth.ts";
-import { reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { publicBatchStatus, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
 import type { FetchFn } from "./paypalClient.ts";
 
 const SESSION_COOKIE = "settle_session";
@@ -60,6 +60,14 @@ export function productSnapshot(store: ProductStore, financial: FinancialStore, 
   const policy = store.getPolicy(workspaceId, user?.userId ?? null);
   const isOwner = workspace.kind === "operational" && workspace.owner?.userId === user?.userId;
   const cap = workspace.kind === "operational" ? financial.getCapSummary(new Date().toISOString()) : null;
+  const control = financial.getControlState();
+  const fees = workspace.kind === "operational"
+    ? receipts.flatMap((receipt) => {
+        if (!receipt.paymentId) return [];
+        const record = financial.getFeeRecord(receipt.paymentId);
+        return [{ jobId: receipt.jobId, paymentId: receipt.paymentId, estimate: record.estimate, provider: record.provider, consistent: record.consistent, explanation: record.explanation }];
+      })
+    : [];
   return {
     workspace, jobs, receipts, decisions: store.listDecisions(workspaceId, user?.userId ?? null), policy,
     audit: store.listAudit(workspaceId, user?.userId ?? null),
@@ -70,8 +78,11 @@ export function productSnapshot(store: ProductStore, financial: FinancialStore, 
       receiptsNeedingVerification: receipts.filter((receipt) => !["reconciled", "synthetic"].includes(receipt.verificationState)).length,
       financialPosition: cap ? { confirmedSpendCents: cap.confirmedSpendCents, remainingCents: cap.remainingCents, lastSuccessfulReconciliation: cap.lastSuccessfulReconciliation, fresh: cap.fresh } : null,
     },
+    fees,
+    control,
     capabilities: {
-      canEdit: isOwner, canApprove: isOwner, canPay: isOwner && providerConfigured, canReconcile: isOwner && providerConfigured,
+      canEdit: isOwner, canApprove: isOwner, canReject: isOwner, canPay: isOwner && providerConfigured && !control.emergencyStop,
+      canReconcile: isOwner && providerConfigured, canControl: isOwner,
       canResetDemo: workspace.kind === "demo" && user !== null,
     },
     provider: { environment: workspace.kind === "demo" ? "none" : "sandbox", configured: workspace.kind === "demo" ? false : providerConfigured },
@@ -136,6 +147,14 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
       const job = store.createJob(workspaceId, user.userId, { title: String(input.title), recipientName: String(input.recipientName), recipientEmail: String(input.recipientEmail), amountCents: Number(input.amountCents), dueAt: typeof input.dueAt === "string" && input.dueAt ? input.dueAt : null, priority: input.priority as "high" | "normal" | "low" }, new Date().toISOString());
       send(res, 201, { job }); return true;
     }
+    const rejectMatch = rest.match(/^\/jobs\/([^/]+)\/reject$/);
+    if (req.method === "POST" && rejectMatch) {
+      if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
+      const input = await body(req);
+      const reason = typeof input.reason === "string" ? input.reason : "";
+      store.rejectJob(workspaceId, decodeURIComponent(rejectMatch[1]), user.userId, reason, new Date().toISOString());
+      send(res, 200, productSnapshot(store, ctx.financialStore, workspaceId, user, providerConfigured)); return true;
+    }
     const approveMatch = rest.match(/^\/jobs\/([^/]+)\/approve$/);
     if (req.method === "POST" && approveMatch) {
       if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
@@ -160,13 +179,43 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
       if (store.getWorkspace(workspaceId, user.userId).kind !== "operational") throw new ProductPermissionError(409, "this action requires an operational workspace; demonstration records cannot enter the financial ledger");
       if (!providerConfigured) { send(res, 503, { error: "PayPal Sandbox is not configured; no payment was submitted" }); return true; }
       const jobId = decodeURIComponent(payMatch[1]);
+      // One run per owner action, before any provider call, so a lost response
+      // still leaves a durable id to refer to.
+      const run = ctx.financialStore.createExecutionRun({
+        kind: "product",
+        requestedBy: user.userId,
+        actorRole: "owner",
+        policyVersion: ctx.financialStore.getPolicy().version,
+        at: new Date().toISOString(),
+        note: `workspace ${workspaceId}, job ${jobId}`,
+      });
       try {
         const result = await submitApprovedPayment({ store: ctx.financialStore, jobId, baseUrl: ctx.baseUrl!, token: ctx.token!, refreshToken: ctx.refreshToken, fetchFn: ctx.fetchFn });
-        send(res, 200, { result, workspace: productSnapshot(store, ctx.financialStore, workspaceId, user, true) });
+        const payment = ctx.financialStore.getPaymentByJob(jobId);
+        if (payment) ctx.financialStore.attachPaymentToRun({ runId: run.runId, paymentId: payment.paymentId, ordinal: 0 });
+        const status = result.status === "provider_confirmed" ? "succeeded"
+          : result.status === "outcome_unknown" ? "outcome_unknown"
+            : ["failed", "blocked"].includes(result.status) ? "failed" : "partial";
+        ctx.financialStore.finishExecutionRun({ runId: run.runId, status: status as "succeeded" | "partial" | "failed" | "outcome_unknown", note: `provider status ${result.batchStatus ?? "none"}`, at: new Date().toISOString() });
+        send(res, 200, {
+          result: { ...result, batchStatus: publicBatchStatus(result.status, result.batchStatus ?? null) },
+          execution_run: ctx.financialStore.getExecutionRun(run.runId),
+          workspace: productSnapshot(store, ctx.financialStore, workspaceId, user, true),
+        });
       } catch (error) {
         const payment = ctx.financialStore.getPaymentByJob(jobId);
-        if (payment?.status === "outcome_unknown") send(res, 202, { error: error instanceof Error ? error.message : "provider outcome unknown", outcomeUnknown: true, workspace: productSnapshot(store, ctx.financialStore, workspaceId, user, true) });
-        else throw error;
+        const message = error instanceof Error ? error.message : "payment submission failed";
+        const outcomeUnknown = payment?.status === "outcome_unknown";
+        const runStatus = outcomeUnknown ? "outcome_unknown" : /EMERGENCY_STOP/.test(message) ? "failed" : payment?.status === "failed" ? "failed" : "outcome_unknown";
+        try {
+          ctx.financialStore.finishExecutionRun({ runId: run.runId, status: runStatus as "outcome_unknown" | "failed", note: message, at: new Date().toISOString() });
+        } catch {
+          // The run is already closed by a previous attempt; the payment state is authoritative.
+        }
+        const snapshot = productSnapshot(store, ctx.financialStore, workspaceId, user, true);
+        if (outcomeUnknown) { send(res, 202, { error: message, outcomeUnknown: true, execution_run_id: run.runId, workspace: snapshot }); return true; }
+        if (/EMERGENCY_STOP/.test(message)) { send(res, 409, { error: message, execution_run_id: run.runId, workspace: snapshot }); return true; }
+        throw error;
       }
       return true;
     }
@@ -174,8 +223,19 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
       if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
       if (store.getWorkspace(workspaceId, user.userId).kind !== "operational") throw new ProductPermissionError(409, "demonstration records cannot be reconciled as operational payments");
       if (!providerConfigured) { send(res, 503, { error: "PayPal Sandbox reconciliation is not configured" }); return true; }
-      const result = await reconcilePayPal({ store: ctx.financialStore, baseUrl: ctx.baseUrl!, token: ctx.token!, refreshToken: ctx.refreshToken, fetchFn: ctx.fetchFn });
+      const input = await body(req);
+      const idempotentReplay = input.idempotentReplay === true;
+      const result = await reconcilePayPal({ store: ctx.financialStore, baseUrl: ctx.baseUrl!, token: ctx.token!, refreshToken: ctx.refreshToken, fetchFn: ctx.fetchFn, idempotentReplay });
       send(res, 200, { result, workspace: productSnapshot(store, ctx.financialStore, workspaceId, user, true) }); return true;
+    }
+    if (req.method === "POST" && rest === "/control") {
+      if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
+      if (store.getWorkspace(workspaceId, user.userId).kind !== "operational") { send(res, 409, { error: "demonstration workspaces cannot change execution control" }); return true; }
+      const input = await body(req);
+      if (typeof input.emergencyStop !== "boolean") { send(res, 400, { error: "emergencyStop must be true or false" }); return true; }
+      const reason = typeof input.reason === "string" && input.reason.trim() !== "" ? input.reason.trim() : "workspace owner changed the emergency stop";
+      ctx.financialStore.setEmergencyStop({ stopped: input.emergencyStop, actor: { actorId: user.userId, role: "owner" }, reason, at: new Date().toISOString() });
+      send(res, 200, productSnapshot(store, ctx.financialStore, workspaceId, user, providerConfigured)); return true;
     }
     if (req.method === "PUT" && rest === "/policy") {
       if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
@@ -196,7 +256,7 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
     send(res, 404, { error: "product route not found" }); return true;
   } catch (error) {
     if (error instanceof ProductPermissionError) send(res, error.status, { error: error.message });
-    else if (error instanceof SyntaxError || (error instanceof Error && /required|invalid|must|cannot|exceed|only the workspace owner/.test(error.message))) send(res, 400, { error: error instanceof Error ? error.message : "invalid request" });
+    else if (error instanceof SyntaxError || (error instanceof Error && /required|requires|invalid|must|cannot|exceed|only the workspace owner/.test(error.message))) send(res, 400, { error: error instanceof Error ? error.message : "invalid request" });
     else send(res, 500, { error: error instanceof Error ? error.message : "product request failed" });
     return true;
   }

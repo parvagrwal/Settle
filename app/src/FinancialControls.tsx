@@ -4,22 +4,28 @@
 // the authenticated server endpoint.
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  confirmDue,
+  fetchControl,
   fetchFinancialDiscrepancies,
   reconcileFinancial,
+  setEmergencyStop,
   updateFinancialPolicy,
   type Caps,
+  type ControlState,
   type FinancialDiscrepancy,
+  type FinancialReport,
 } from "./api.ts";
 
 interface FinancialControlsProps {
   caps: Caps | null;
+  report: FinancialReport | null;
   ownerTokenSet: boolean;
   /** Refresh grid, jobs, audit and authoritative cap summary. */
   onRefresh: () => Promise<void>;
 }
 
 export default function FinancialControls(props: FinancialControlsProps) {
-  const { caps, ownerTokenSet, onRefresh } = props;
+  const { caps, report, ownerTokenSet, onRefresh } = props;
   const cap = caps?.rolling_cap_cents ?? caps?.weekly_cap_cents ?? 150000;
   const perPayment = caps?.per_payment_cap_cents ?? 20000;
   const freshness = caps?.freshness_seconds ?? 300;
@@ -34,6 +40,8 @@ export default function FinancialControls(props: FinancialControlsProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [discrepancies, setDiscrepancies] = useState<FinancialDiscrepancy[]>([]);
+  const [control, setControl] = useState<ControlState | null>(null);
+  const [stopReason, setStopReason] = useState("");
 
   useEffect(() => {
     setCapDollars((cap / 100).toFixed(2));
@@ -50,6 +58,45 @@ export default function FinancialControls(props: FinancialControlsProps) {
     // owner actions below surface HTTP errors with their exact reason.
     fetchFinancialDiscrepancies().then(setDiscrepancies).catch(() => setDiscrepancies([]));
   }, [ownerTokenSet, version]);
+
+  useEffect(() => {
+    if (!ownerTokenSet) {
+      setControl(null);
+      return;
+    }
+    fetchControl().then(setControl).catch(() => setControl(null));
+  }, [ownerTokenSet, version]);
+
+  async function handleControlChange(stopped: boolean): Promise<void> {
+    setWorking(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const next = await setEmergencyStop(stopped, stopReason.trim() === "" ? (stopped ? "owner emergency stop" : "owner cleared the emergency stop") : stopReason.trim());
+      setControl(next);
+      setNotice(stopped ? "Emergency stop engaged. No reservation or submission can reach PayPal until it is cleared." : "Emergency stop cleared.");
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "emergency stop change failed");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleConfirmSweep(): Promise<void> {
+    setWorking(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const sweep = await confirmDue();
+      setNotice(`Confirmation sweep: ${sweep.checked} due, ${sweep.confirmed} confirmed, ${sweep.stillPending} still pending, ${sweep.errors} read error(s).`);
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "confirmation sweep failed");
+    } finally {
+      setWorking(false);
+    }
+  }
 
   async function refreshDiscrepancies(): Promise<void> {
     if (!ownerTokenSet) return;
@@ -183,6 +230,63 @@ export default function FinancialControls(props: FinancialControlsProps) {
           read refuses new reservations until reconciliation succeeds.
         </p>
       </form>
+      <div className="approve-list" aria-label="Execution control">
+        <h3>Execution control</h3>
+        <p className="panel-line">
+          Emergency stop: <strong>{control === null ? "unknown (enter the owner token)" : control.emergencyStop ? "ENGAGED" : "clear"}</strong>
+          {control?.changedAt ? ` — set ${control.changedAt} by ${control.changedBy ?? "owner"} (${control.reason ?? "no reason given"})` : ""}.
+          The stop is stored in the database and survives a restart. While it is engaged, no payment can
+          be reserved or submitted, and the refusal names it.
+        </p>
+        <p className="panel-line">
+          <label>
+            Reason for the change{" "}
+            <input
+              type="text"
+              value={stopReason}
+              onChange={(event) => setStopReason(event.target.value)}
+              placeholder="incident reference"
+              disabled={working || !ownerTokenSet}
+              aria-label="Reason for the emergency stop change"
+            />
+          </label>{" "}
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => handleControlChange(!(control?.emergencyStop ?? false))}
+            disabled={working || !ownerTokenSet}
+          >
+            {control?.emergencyStop ? "Clear emergency stop" : "Engage emergency stop"}
+          </button>{" "}
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={handleConfirmSweep}
+            disabled={working || !ownerTokenSet}
+          >
+            Run confirmation sweep
+          </button>
+        </p>
+        <p className="panel-line">
+          The sweep reads every payment whose durable confirmation work is due. It only reads PayPal; it
+          never submits. Exhausted attempts move a payment to reconciliation required, never to failed.
+        </p>
+      </div>
+      <div className="approve-list" aria-label="Fee evidence">
+        <h3>Fees</h3>
+        <p className="panel-line">
+          Published policy: <strong>{report?.fees.policy.policyId ?? "not loaded"}</strong> v
+          {report?.fees.policy.version ?? "?"} — {report?.fees.policy.formula ?? ""} Source:{" "}
+          {report?.fees.policy.sourceUrl ?? "not loaded"} (retrieved {report?.fees.policy.retrievedAt ?? "unknown"}).
+        </p>
+        <p className="panel-line">
+          Estimated sender fees stored before submission: <strong>{report ? (report.fees.estimatedTotal.value / 100).toFixed(2) : "?"}</strong>{" "}
+          USD. Provider-reported fees: <strong>{report ? (report.fees.providerReportedTotal.value / 100).toFixed(2) : "?"}</strong>{" "}
+          USD across {report?.fees.providerReportedCount ?? 0} item(s);{" "}
+          {report?.fees.missingProviderFeeCount ?? 0} confirmed item(s) reported no fee.{" "}
+          {report?.fees.note ?? ""}
+        </p>
+      </div>
       {notice !== null && (
         <p className="panel-line" role="status">
           {notice}

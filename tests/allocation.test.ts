@@ -29,6 +29,7 @@ import { createSettleServer } from "../src/server/routes.ts";
 process.env.SETTLE_OWNER_TOKEN = "test-owner-token";
 const OWNER_HEADERS = { "x-settle-owner-token": "test-owner-token" };
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 import { runAgentLoop, type PayFn } from "../src/server/agent.ts";
 import { createAuditLog } from "../src/server/audit.ts";
 import { groqPropose } from "../src/server/groqProposer.ts";
@@ -203,7 +204,7 @@ function makeStubPay(): { payFn: PayFn; calls: Job[][] } {
 }
 
 async function startServer(mock: ReturnType<typeof makeMock>, opts: { groqApiKey?: string; clientEmail?: string } = {}) {
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const app = createSettleServer({
     jobs,
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -320,7 +321,7 @@ test("model reply over the run budget is trimmed, never paid over budget", async
 
 // Attacker 3a: a model reply naming an unknown job is refused, never paid.
 test("model reply naming an unknown job is refused, never paid", async () => {
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const fetchFn = (async () => {
     return mockResponse(200, {
       choices: [
@@ -346,7 +347,7 @@ test("model reply naming an unknown job is refused, never paid", async () => {
 
 // Attacker 3b: a model reply holding an unknown job is refused too.
 test("model reply holding an unknown job is refused", async () => {
-  const jobs = seedJobs("freelancer@example.com");
+  const jobs = payableJobs("freelancer@example.com");
   const fetchFn = (async () => {
     return mockResponse(200, {
       choices: [
@@ -373,7 +374,7 @@ test("model reply holding an unknown job is refused", async () => {
 // Attacker 3c: a model reply that leaves a candidate in neither list, or
 // names the same job twice, is refused.
 test("model reply must cover every candidate exactly once, no gaps and no duplicates", async () => {
-  const jobs = seedJobs("freelancer@example.com").filter((j) => j.status === "waiting");
+  const jobs = payableJobs("freelancer@example.com").filter((j) => j.status === "waiting");
   const replyFor = (content: string) =>
     (async () => mockResponse(200, { choices: [{ message: { content } }] })) as unknown as typeof fetch;
   await assert.rejects(

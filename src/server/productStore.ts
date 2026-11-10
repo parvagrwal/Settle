@@ -309,6 +309,29 @@ export class ProductStore {
     });
     return this.getJob(workspaceId, jobId, userId);
   }
+  /**
+   * Record an owner decision not to pay an obligation.
+   *
+   * A rejection is only possible before an approval created a payment
+   * identity: once a payment exists, un-authorizing it would have to unwind a
+   * ledger row, and the honest way to stop that payment is the emergency stop
+   * or a provider failure. The decision itself is durable in the audit trail.
+   */
+  rejectJob(workspaceId: string, jobId: string, userId: string, reason: string, at: string): ProductJob {
+    this.requireOwner(workspaceId, userId, true);
+    if (this.getWorkspace(workspaceId, userId).kind !== "operational") {
+      throw new ProductPermissionError(409, "demonstration records cannot be rejected as operational obligations");
+    }
+    const job = this.getJob(workspaceId, jobId, userId);
+    if (job.approvalState === "approved") {
+      throw new ProductPermissionError(409, "this obligation is already approved and has a payment identity; refusing to un-authorize it. Use the emergency stop or let the provider refuse it.");
+    }
+    const trimmed = reason.trim();
+    if (trimmed === "") throw new Error("a rejection requires a reason");
+    this.audit(workspaceId, userId, "job_rejected", jobId, `Owner declined to pay this obligation: ${trimmed}`, at);
+    return job;
+  }
+
   getPolicy(workspaceId: string, userId: string | null): WorkspacePolicy {
     this.getWorkspace(workspaceId, userId);
     const row = this.db.prepare("SELECT * FROM product_workspace_policies WHERE workspace_id=?").get(workspaceId) as Row;

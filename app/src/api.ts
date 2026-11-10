@@ -3,6 +3,9 @@
 // grid rows, and audit rows. Every call returns plain JSON from /api/*.
 import { actualFeeUsd, usdOrUnreported } from "./fees.ts";
 import { statusLabel } from "./status.ts";
+export type RecordOrigin = "application" | "seed";
+export type FeeState = "estimate_only" | "provider_reported" | "unavailable" | "not_applicable";
+
 export interface GridRow {
   job_id: string;
   freelancer_id: string;
@@ -13,10 +16,19 @@ export interface GridRow {
   status: string;
   reason: string | null;
   payout_batch_id: string | null;
+  record_origin?: RecordOrigin;
+  provenance_label?: string;
+  seeded?: boolean;
+  fee_estimate_cents?: number | null;
+  provider_fee_cents?: number | null;
+  fee_state?: FeeState;
+  execution_run_id?: string | null;
 }
 
 export interface JobRow {
   job_id: string;
+  /** Seed rows are demonstration data and cannot be approved or paid. */
+  origin?: "application" | "seed";
   freelancer_id: string;
   paypal_email: string;
   amount_cents: number;
@@ -81,9 +93,65 @@ export interface PayResult {
   invoice_status?: string | null;
   invoice_total_cents?: number | null;
   invoice_error?: string | null;
+  /** Durable identity for this run. Every item below hangs off this id. */
+  execution_run?: null | {
+    runId: string;
+    status: string;
+    items: Array<{
+      jobId: string;
+      status: string;
+      payoutBatchId: string | null;
+      payoutItemId: string | null;
+      transactionId: string | null;
+      providerStatus: string | null;
+      amountMinor: number;
+    }>;
+    batches: Array<{ payoutBatchId: string; itemCount: number; grossMinor: number; status: string }>;
+  };
+  fee_records?: Array<{
+    job_id: string;
+    estimate: { estimatedFeeMinor: number; policyId: string; policyVersion: number; formula: string; sourceUrl: string } | null;
+    provider: { reportedFeeMinor: number; isProviderEstimate: boolean } | null;
+    consistent: boolean | null;
+    explanation: string;
+  }>;
   /** HTTP 202 means a provider submission became ambiguous. */
   httpStatus?: number;
   outcomeUnknown?: boolean;
+}
+
+export interface FinancialReport {
+  asOf: string;
+  environment: { mode: string; configured: boolean; connected: boolean; note: string };
+  source: string;
+  metrics: Record<string, {
+    value: number;
+    currency: string;
+    label: string;
+    definition: string;
+    window: string;
+    includes: string;
+    source: string;
+    verification: string;
+  }>;
+  fees: {
+    policy: { policyId: string; version: number; formula: string; sourceUrl: string; retrievedAt: string };
+    estimatedTotal: { value: number };
+    providerReportedTotal: { value: number };
+    providerReportedCount: number;
+    missingProviderFeeCount: number;
+    note: string;
+  };
+  cap: { eligibleSpendCents: number; activeReservationsCents: number; remainingCents: number; fresh: boolean; windowStart: string; windowEnd: string; lastSuccessfulReconciliation: string | null };
+  discrepancies: number;
+  explanations: { totalsDiffer: string; seeds: string; fees: string };
+}
+
+export interface ControlState {
+  emergencyStop: boolean;
+  reason: string | null;
+  changedAt: string | null;
+  changedBy: string | null;
 }
 
 export interface FinancialDiscrepancy {
@@ -112,6 +180,12 @@ export interface DashboardRow {
   fee_usd: number | null;
   fee_label: string;
   net_usd: number;
+  record_origin: RecordOrigin;
+  provenance_label: string;
+  seeded: boolean;
+  fee_state: FeeState;
+  fee_estimate_cents: number | null;
+  execution_run_id: string | null;
 }
 
 export function toDashboardRow(row: GridRow): DashboardRow {
@@ -133,6 +207,12 @@ export function toDashboardRow(row: GridRow): DashboardRow {
     fee_usd: feeUsd,
     fee_label: usdOrUnreported(feeCents),
     net_usd: amountUsd,
+    record_origin: row.record_origin ?? "application",
+    provenance_label: row.provenance_label ?? "Application record",
+    seeded: row.seeded === true || row.record_origin === "seed",
+    fee_state: row.fee_state ?? (row.fee_cents === null ? "unavailable" : "provider_reported"),
+    fee_estimate_cents: row.fee_estimate_cents ?? null,
+    execution_run_id: row.execution_run_id ?? null,
   };
 }
 
@@ -192,6 +272,41 @@ export async function fetchCaps(): Promise<Caps> {
   return getJson<Caps>("/api/caps");
 }
 
+export async function fetchReport(): Promise<FinancialReport> {
+  return getJson<FinancialReport>("/api/financial/report");
+}
+
+export async function fetchControl(): Promise<ControlState> {
+  const res = await fetch("/api/financial/control", { headers: ownerHeaders() });
+  if (!res.ok) throw new Error(`control state failed, HTTP ${res.status}`);
+  return (await res.json()) as ControlState;
+}
+
+export async function setEmergencyStop(stopped: boolean, reason: string): Promise<ControlState> {
+  const res = await fetch("/api/financial/control", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...ownerHeaders() },
+    body: JSON.stringify({ emergencyStop: stopped, reason }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `emergency stop change failed, HTTP ${res.status}`);
+  }
+  return (await res.json()) as ControlState;
+}
+
+export async function confirmDue(): Promise<{ checked: number; confirmed: number; stillPending: number; errors: number }> {
+  const res = await fetch("/api/financial/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...ownerHeaders() },
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `confirmation sweep failed, HTTP ${res.status}`);
+  }
+  return (await res.json()) as { checked: number; confirmed: number; stillPending: number; errors: number };
+}
+
 export async function approveJob(jobId: string): Promise<JobRow> {
   const res = await fetch("/api/approve", {
     method: "POST",
@@ -226,16 +341,17 @@ export async function payJobs(opts: { runBudgetCents?: number; selectedJobIds?: 
   };
 }
 
-export async function reconcileFinancial(): Promise<{ batchesRead: number; itemsRecorded: number }> {
+export async function reconcileFinancial(opts: { idempotentReplay?: boolean } = {}): Promise<{ batchesRead: number; itemsRecorded: number; failures: number; idempotentReplay: boolean }> {
   const res = await fetch("/api/financial/reconcile", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...ownerHeaders() },
+    body: JSON.stringify({ ...(opts.idempotentReplay ? { idempotentReplay: true } : {}) }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `reconcile failed, HTTP ${res.status}`);
   }
-  return (await res.json()) as { batchesRead: number; itemsRecorded: number };
+  return (await res.json()) as { batchesRead: number; itemsRecorded: number; failures: number; idempotentReplay: boolean };
 }
 
 export async function updateFinancialPolicy(input: {

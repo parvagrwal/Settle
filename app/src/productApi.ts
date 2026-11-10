@@ -11,7 +11,19 @@ export interface Snapshot {
   policy: { perPaymentCapCents: number; rollingCapCents: number; windowHours: number; approvalExpiryDays: number; updatedBy: string; updatedAt: string };
   audit: Array<{ sequence: number; actor_id: string; action: string; resource_id: string | null; reason: string; at: string }>;
   summary: { needsApproval: number; approved: number; pendingCents: number; receiptsNeedingVerification: number; financialPosition: null | { confirmedSpendCents: number; remainingCents: number; lastSuccessfulReconciliation: string | null; fresh: boolean } };
-  capabilities: { canEdit: boolean; canApprove: boolean; canPay: boolean; canReconcile: boolean; canResetDemo: boolean };
+  fees: Array<{
+    jobId: string | null;
+    paymentId: string;
+    estimate: null | { estimatedFeeMinor: number; policyId: string; policyVersion: number; formula: string; sourceUrl: string };
+    provider: null | { reportedFeeMinor: number; isProviderEstimate: boolean; source: string };
+    consistent: boolean | null;
+    explanation: string;
+  }>;
+  control: { emergencyStop: boolean; reason: string | null; updatedAt: string | null; updatedBy: string | null; changedAt: string | null; changedBy: string | null };
+  capabilities: {
+    canEdit: boolean; canApprove: boolean; canReject: boolean; canPay: boolean; canReconcile: boolean;
+    canControl: boolean; canResetDemo: boolean;
+  };
   provider: { environment: string; configured: boolean }; provenanceNotice: string;
 }
 export interface Session { authenticated: boolean; user: User | null; workspaces: Workspace[] }
@@ -38,7 +50,17 @@ export const productApi = {
   createJob: (workspaceId: string, input: { title: string; recipientName: string; recipientEmail: string; amountCents: number; dueAt: string | null; priority: string }) => request<{ job: Job }>(`/api/product/workspaces/${workspaceId}/jobs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }),
   recommend: (workspaceId: string) => request<{ decision: Decision }>(`/api/product/workspaces/${workspaceId}/recommend`, { method: "POST" }),
   approve: (workspaceId: string, jobId: string) => request<Snapshot>(`/api/product/workspaces/${workspaceId}/jobs/${jobId}/approve`, { method: "POST" }),
-  pay: (workspaceId: string, jobId: string) => request<{ workspace: Snapshot }>(`/api/product/workspaces/${workspaceId}/jobs/${jobId}/pay`, { method: "POST" }),
+  pay: (workspaceId: string, jobId: string) => request<{
+    workspace: Snapshot;
+    result?: { status: string; batchStatus: string; payoutBatchId: string | null; confirmationScheduled: boolean };
+    execution_run?: null | {
+      runId: string; status: string;
+      items: Array<{ jobId: string; status: string; payoutBatchId: string | null; payoutItemId: string | null; transactionId: string | null; providerStatus: string | null }>;
+      batches: Array<{ payoutBatchId: string; itemCount: number; status: string }>;
+    };
+  }>(`/api/product/workspaces/${workspaceId}/jobs/${jobId}/pay`, { method: "POST" }),
+  reject: (workspaceId: string, jobId: string, reason: string) => request<Snapshot>(`/api/product/workspaces/${workspaceId}/jobs/${jobId}/reject`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) }),
+  control: (workspaceId: string, emergencyStop: boolean, reason: string) => request<Snapshot>(`/api/product/workspaces/${workspaceId}/control`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emergencyStop, reason }) }),
   reconcile: (workspaceId: string) => request<{ workspace: Snapshot }>(`/api/product/workspaces/${workspaceId}/reconcile`, { method: "POST" }),
   policy: (workspaceId: string, input: { perPaymentCapCents: number; rollingCapCents: number }) => request<{ policy: Snapshot["policy"] }>(`/api/product/workspaces/${workspaceId}/policy`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }),
   resetDemo: () => request<Snapshot>("/api/product/workspaces/demo/reset", { method: "POST" }),

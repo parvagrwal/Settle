@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSettleServer } from "../src/server/routes.ts";
 import { seedJobs } from "../src/server/seed.ts";
+import { payableJobs } from "./helpers/payableJobs.ts";
 import { ProductStore } from "../src/server/productStore.ts";
 import { FinancialStore } from "../src/server/financialStore.ts";
 import { TransactionStore } from "../src/server/transactionStore.ts";
@@ -16,7 +17,7 @@ const TOKEN = process.env.SETTLE_OWNER_TOKEN;
 async function setup() {
   const path = join(mkdtempSync(join(tmpdir(), "settle-product-api-")), "product.db");
   const productStore = new ProductStore(path);
-  const app = createSettleServer({ jobs: seedJobs("receiver@example.test"), allowlistedEmails: new Set(["receiver@example.test"]), productStore });
+  const app = createSettleServer({ jobs: payableJobs("receiver@example.test"), allowlistedEmails: new Set(["receiver@example.test"]), productStore });
   const port = await app.listen(0);
   return { app, productStore, base: `http://127.0.0.1:${port}` };
 }
@@ -186,7 +187,7 @@ test("Fresh install with the real server wiring (product store plus PayPal crede
   }) as unknown as typeof fetch;
 
   const app = createSettleServer({
-    jobs: seedJobs("receiver@example.test"),
+    jobs: payableJobs("receiver@example.test"),
     allowlistedEmails: new Set(["receiver@example.test"]),
     baseUrl: "https://api-m.sandbox.paypal.com",
     token: "fixture-token",

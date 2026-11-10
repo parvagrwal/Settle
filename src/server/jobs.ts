@@ -16,7 +16,9 @@ export type JobStatus =
   | "waiting_for_meera"
   | "blocked"
   | "unclaimed"
-  | "failed";
+  | "failed"
+  /** A seed row shown for illustration. It is not provider evidence. */
+  | "historical_reference";
 
 export interface Job {
   job_id: string;
@@ -28,6 +30,10 @@ export interface Job {
   due?: string | null;
   /** How urgent the job is. The allocator pays high priority before low. */
   priority?: "high" | "normal" | "low" | null;
+  /** Where this record came from. Seed rows are demonstration data and are
+   * refused by every payment path; `application` means this server created it
+   * from an owner action. */
+  origin?: "application" | "seed";
   approval_state: "approved" | "not_approved" | "expired";
   approved_at: number | null;
   status: JobStatus;
