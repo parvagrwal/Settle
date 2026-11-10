@@ -50,10 +50,8 @@ test("AG Studio mounts native chart/grid and serializes report state", async ({ 
   await page.getByRole("tab", { name: "AG Studio analytics" }).click();
   await expect(page.getByText("From pattern to payment population")).toBeVisible();
   await expect(page.locator(".transaction-studio canvas").first()).toBeVisible({ timeout: 20_000 });
-  // Serialization happens on a state update: cross-filter by clicking the
-  // rendered chart, which is a real user interaction, not a synthetic event.
-  await page.locator(".transaction-studio canvas").first().click({ position: { x: 200, y: 150 }, force: true });
-  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("settle.studio.report"))), { timeout: 15_000 }).toBe(true);
+  await page.locator(".transaction-studio").getByRole("button", { name: /^Status is/ }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("settle.studio.report.v2") !== null)).toBe(true);
   await page.screenshot({ path: "evidence/browser/studio-analytics.png", fullPage: true });
 });
 

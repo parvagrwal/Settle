@@ -9,6 +9,9 @@ test("[preserved] legacy dashboard: the Studio payouts grid lists the seeded row
   await page.getByRole("button", { name: "Legacy payout workflow" }).click();
   const dashboard = page.getByLabel("Payouts dashboard");
   await expect(dashboard.getByText("settle-audit-1").first()).toBeVisible({ timeout: 20_000 });
+  const wrapped = dashboard.locator(".studio-wrapped-cell").first();
+  await expect(wrapped).toBeVisible();
+  await expect(wrapped).toHaveCSS("white-space", "normal");
   await expect(dashboard.locator("canvas").first()).toBeVisible();
   await dashboard.getByRole("button", { name: "Use plain grid view" }).click();
   await expect(dashboard.getByRole("button", { name: "Use dashboard view" })).toBeVisible();

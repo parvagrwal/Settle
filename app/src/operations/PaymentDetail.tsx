@@ -176,5 +176,8 @@ export function PaymentDetail({ operationId, version, load }: { operationId: str
 export function PaymentDetailRenderer(params: ICellRendererParams<OperationView, unknown, { store: OperationsStore }>) {
   const row = params.data;
   if (!row) return null;
-  return <PaymentDetail operationId={row.operationId} version={`${row.paymentStatus}|${row.lastUpdatedAt ?? ""}|${row.verificationState}|${row.reconciliationState}`} load={params.context.store.api.detail} />;
+  // The custom full-width detail is owned by an AG Grid row. Its contents
+  // must therefore be exposed as a cell, while PaymentDetail retains its own
+  // labelled region for standalone use as well.
+  return <div role="gridcell"><PaymentDetail operationId={row.operationId} version={`${row.paymentStatus}|${row.lastUpdatedAt ?? ""}|${row.verificationState}|${row.reconciliationState}`} load={params.context.store.api.detail} /></div>;
 }

@@ -72,7 +72,7 @@ Two more classes were closed at the same time:
   same `sender_batch_id` PayPal documents as idempotent for 30 days. PayPal's
   duplicate rejection contains a HATEOAS link to the original batch; that link is
   followed instead of asserting a new payout.
-- The model proposes; `decide()` and the ledger enforce the caps. The caps and the run budget appear in the model prompt as context, but a model reply cannot raise them, and there is no bypass of the server. Emergency stop is stored in
+- The model proposes; `decide()` and the ledger enforce the caps. The run budget appears in the model prompt as context, and the caps are enforced by the rules after the proposal, not told to the model as values; a model reply cannot raise them, and there is no bypass of the server. Emergency stop is stored in
   `financial_control`, audited, survives restart, and blocks `reservePayment` /
   `beginSubmission` before any provider call.
 

@@ -194,7 +194,7 @@ test("[preserved] AG Studio report state is saved locally when the reader change
   await page.getByRole("tab", { name: "AG Studio analytics" }).click();
   const studio = page.locator(".transaction-studio");
   await expect(studio.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
-  await studio.getByRole("heading", { name: /^Status is/ }).click();
+  await studio.getByRole("button", { name: /^Status is/ }).click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem("settle.studio.report.v2") !== null)).toBe(true);
   await expect(page.getByText("Report state saved locally")).toBeVisible();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("settle.studio.report.v2") ?? "{}") as { pages?: Array<{ id: string }>; selectedPageId?: string });

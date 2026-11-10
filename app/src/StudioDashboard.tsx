@@ -6,9 +6,10 @@
 // from the server, and again right after a payment completes.
 import { Component, useMemo, useState, type ReactNode } from "react";
 import { AgStudio } from "ag-studio-react";
-import type { AgDataSourcesDefinition, AgFieldDefinition, AgReportState } from "ag-studio";
+import type { AgDataSourcesDefinition, AgFieldDefinition, AgReportState, AgWidgetsConfig, AgGridWidgetOptions } from "ag-studio";
 import { AgCharts } from "ag-charts-react";
 import type { AgChartOptions } from "ag-charts-community";
+import type { ICellRendererParams } from "ag-grid-community";
 import type { DashboardRow } from "./api.ts";
 import { statusLabel } from "./status.ts";
 import GridFallback from "./GridFallback.tsx";
@@ -29,6 +30,22 @@ const jobFields: AgFieldDefinition[] = [
   { id: "fee_label", name: "PayPal fee", format: "textFormat" },
   { id: "net_usd", name: "Recipient receives (USD)", format: "currencyFormat" },
 ];
+
+// Studio's supported grid-widget renderer hook keeps long explanations readable
+// without reaching into AG Grid's internal CSS. Use the library-formatted value.
+function StudioWrappedCell(params: ICellRendererParams) {
+  return <span className="studio-wrapped-cell">{String(params.valueFormatted ?? params.value ?? "")}</span>;
+}
+const wrapStudioCells = (config: AgWidgetsConfig): AgWidgetsConfig => ({
+  ...config,
+  widgets: config.widgets.map((widget) => widget.id !== "grid" ? widget : {
+    ...widget,
+    options: {
+      ...((widget.options ?? {}) as AgGridWidgetOptions),
+      createCellRenderer: () => StudioWrappedCell,
+    },
+  }),
+});
 
 // Dashboard layout, built from the payout rows. One page, one grid widget
 // showing the payout rows.
@@ -181,7 +198,7 @@ export default function StudioDashboard({ rows }: StudioDashboardProps) {
       ) : (
         <StudioErrorBoundary fallback={<GridFallback rows={filteredRows} />}>
           <div className="studio">
-            <AgStudio style={FILL} data={data} initialState={initialState} mode="view" theme={settleStudioTheme} enableFilterEditingInViewMode={true} />
+            <AgStudio style={FILL} data={data} initialState={initialState} mode="view" theme={settleStudioTheme} widgets={wrapStudioCells} enableFilterEditingInViewMode={true} />
           </div>
         </StudioErrorBoundary>
       )}

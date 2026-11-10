@@ -1,7 +1,7 @@
 // One visual language: the grid theme, the Studio theme, the chart theme and
 // the page's CSS variables are all derived from the same tokens.
 import { describe, expect, it } from "vitest";
-import { applyDesignTokens, settleChartTheme, settleGridParams, settleGridTheme, settleStudioParams, settleStudioTheme, settleTokens } from "./theme.ts";
+import { applyDesignTokens, componentTokens, primitives, semanticTokens, settleChartTheme, settleGridParams, settleGridTheme, settleStudioParams, settleStudioTheme, settleTokens } from "./theme.ts";
 
 describe("Settle AG theme", () => {
   it("derives the grid theme from the product tokens", () => {
@@ -44,7 +44,13 @@ describe("Settle AG theme", () => {
     expect(root.style.getPropertyValue("--settle-ink")).toBe(settleTokens.ink);
     expect(root.style.getPropertyValue("--settle-border")).toBe(settleTokens.border);
     expect(root.style.getPropertyValue("--settle-font")).toBe(settleTokens.fontFamily);
+    expect(root.style.getPropertyValue("--settle-component-button-primary")).toBe(componentTokens.button.primary);
+    expect(componentTokens.button.primary).toBe(semanticTokens.action.primary);
+    expect(settleGridParams.backgroundColor).toBe(semanticTokens.surface.card);
     expect(root.style.getPropertyValue("--settle-radius")).toBe(`${settleTokens.radius}px`);
+    primitives.spacing.forEach((value, index) => {
+      expect(root.style.getPropertyValue(`--settle-space-${index}`)).toBe(`${value}px`);
+    });
   });
 
   it("keeps text and status colours at WCAG AA contrast on their backgrounds", () => {
@@ -57,6 +63,8 @@ describe("Settle AG theme", () => {
     expect(contrast(settleTokens.muted, settleTokens.surface)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(settleTokens.muted, settleTokens.surfaceSoft)).toBeGreaterThanOrEqual(4.5);
     expect(contrast("#ffffff", settleTokens.accent)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(primitives.brand.inkberry, primitives.brand.citrus)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(semanticTokens.text.inverse, componentTokens.button.primaryHover)).toBeGreaterThanOrEqual(4.5);
     for (const tone of Object.values(settleTokens.status)) expect(contrast(tone.fg, tone.bg), `${tone.fg} on ${tone.bg}`).toBeGreaterThanOrEqual(4.5);
   });
 });

@@ -157,8 +157,8 @@ export function CapacityWidget(props: CapacityWidgetProps) {
   const reconciliationStale = !capacity.fresh || capacity.lastSuccessfulReconciliation === null;
 
   return (
-    <section aria-label="Payment capacity and exceptions">
-      <ul aria-label="Capacity figures">
+    <section className="ops-capacity" aria-label="Payment capacity and exceptions">
+      <ul className="ops-capacity-figures" aria-label="Capacity figures">
         <li>
           <span>Available budget</span> <span data-testid="figure-value">{formatCents(capacity.budgetCents)}</span>
         </li>
@@ -174,6 +174,7 @@ export function CapacityWidget(props: CapacityWidgetProps) {
       </ul>
       <div
         role="img"
+        className="ops-capacity-meter"
         aria-label={`${formatCents(capacity.rollingSpendCents)} spent of the ${formatCents(capacity.budgetCents)} budget, ${formatCents(capacity.remainingCents)} remaining`}
       >
         <div style={{ width: `${spentPercent}%` }} />
@@ -183,7 +184,7 @@ export function CapacityWidget(props: CapacityWidgetProps) {
       {loadError !== null && <p>{loadError}</p>}
       {exceptionsError && <p>Exception counts could not be read. The capacity figures above are still the ledger&apos;s.</p>}
       {rows !== null && rows.length === 0 && <p>No payment obligation is recorded in this view yet.</p>}
-      <div>
+      <div className="ops-capacity-tiles">
         {CATEGORIES.map((category) => {
           const count = exceptionsError ? null : inCategory(category.flag).length;
           const demos = includeDemonstration ? demoCount(category.flag) : 0;
@@ -208,7 +209,7 @@ export function CapacityWidget(props: CapacityWidgetProps) {
         How this is calculated
       </button>
       {showCalculation && (
-        <section aria-label="Calculation and sources">
+        <section className="ops-capacity-calculation" aria-label="Calculation and sources">
           <p>{capacity.formula}</p>
           <p>
             {`${formatCents(capacity.budgetCents)} − ${formatCents(capacity.rollingSpendCents)} − ${formatCents(capacity.activeExposureCents)} = ${formatCents(capacity.remainingCents)}`}

@@ -1,41 +1,78 @@
-// One visual language for the page, AG Grid, AG Studio and AG Charts.
-//
-// The tokens below are the product's existing palette and typography (the same
-// values the stylesheets already use). Everything AG renders is themed from
-// them through the supported Theming API, and the same tokens are published as
-// CSS custom properties, so a component stylesheet and an AG theme cannot
-// drift apart. No AG-internal class is overridden to achieve this.
+// Shared Settle primitives and adapters for CSS, AG Grid, AG Studio and AG Charts.
+// AG components use their supported theming APIs; CSS properties are published at startup.
 import { themeQuartz } from "ag-grid-community";
 import { studioTheme } from "ag-studio";
 import type { AgChartTheme } from "ag-charts-community";
 
-export const settleTokens = {
-  fontFamily: 'system-ui, "Segoe UI", Roboto, sans-serif',
-  fontSize: 14,
-  ink: "#102e2a",
-  muted: "#60736f",
-  border: "#dce5e2",
-  borderStrong: "#b7c9c4",
-  surface: "#ffffff",
-  surfaceSoft: "#f4f8f6",
-  surfaceSunken: "#e9f1ee",
-  accent: "#0b6c59",
-  accentBright: "#0b8c71",
-  accentSoft: "#e3f3ee",
-  radius: 12,
-  radiusSmall: 6,
-  spacing: 7,
-  rowHeight: 42,
-  headerHeight: 44,
+// Primitive values live here. Semantic and component aliases below derive from them;
+// applyDesignTokens publishes those same values for CSS before React mounts.
+const brand = { inkberry: "#241e2b", haze: "#b5c0cf", citrus: "#d9e95b" } as const;
+export const primitives = {
+  brand,
+  neutral: { white: "#ffffff", page: "#f5f6f8", soft: "#eef0f4", sunken: "#e4e7ed", border: "#d1d6df", strong: "#8793a3", muted: "#566273", inverse: "#f8f9fb", darkSoft: "#393341" },
   status: {
     success: { fg: "#096044", bg: "#dff5e9" },
     warning: { fg: "#74520b", bg: "#fff0c7" },
     danger: { fg: "#972b2b", bg: "#fde5e5" },
     info: { fg: "#0b3d91", bg: "#e3f2fd" },
-    neutral: { fg: "#3d514d", bg: "#e9efed" },
+    neutral: { fg: "#414d5c", bg: "#e9edf2" },
   },
-  /** Series colours, ordered so the first four read as settled / in flight / at risk / informational. */
-  chartPalette: ["#0b6c59", "#d69c25", "#b23a3a", "#2f6fb2", "#5fb8a3", "#7a5ea8", "#8a9a96", "#e07b53"],
+  chart: [brand.inkberry, "#a66d00", "#b23a3a", "#2f6fb2", "#6a7686", "#725b86", "#487e70", "#a75e3f"],
+  typography: { family: 'system-ui, "Segoe UI", Roboto, sans-serif', body: 16, compact: 14, heading1: 28, heading2: 22, heading3: 18, regular: 400, strong: 700 },
+  spacing: [0, 4, 8, 12, 16, 24, 32, 48],
+  size: { control: 44, gridRow: 42, gridHeader: 44 },
+  borderWidth: { thin: 1, strong: 2, focus: 3 },
+  elevation: { raised: "0 4px 16px rgba(36, 30, 43, 0.12)" },
+  layer: { base: 0, sticky: 10, overlay: 100 },
+  radius: { small: 6, medium: 12, large: 18 },
+  motion: { fast: "120ms", normal: "180ms", easing: "ease-in-out" },
+} as const;
+
+// Semantic roles are shared by CSS and the AG adapters below.
+export const semanticTokens = {
+  surface: { page: primitives.neutral.page, card: primitives.neutral.white, elevated: primitives.neutral.white, sunken: primitives.neutral.sunken, hover: primitives.neutral.soft },
+  text: { primary: primitives.brand.inkberry, secondary: primitives.neutral.muted, inverse: primitives.neutral.inverse },
+  border: { default: primitives.neutral.border, strong: primitives.neutral.strong },
+  action: { primary: primitives.brand.inkberry, hover: primitives.neutral.darkSoft, selected: primitives.brand.citrus },
+  focus: primitives.brand.inkberry,
+  status: primitives.status,
+  chart: primitives.chart,
+} as const;
+
+// Component aliases only where several implementations share a meaningful role.
+export const componentTokens = {
+  button: { primary: semanticTokens.action.primary, primaryHover: semanticTokens.action.hover, primaryText: semanticTokens.text.inverse, height: primitives.size.control },
+  input: { background: semanticTokens.surface.card, border: semanticTokens.border.strong, text: semanticTokens.text.primary, height: primitives.size.control },
+  navigation: { selected: semanticTokens.action.selected, text: semanticTokens.text.primary },
+  card: { background: semanticTokens.surface.card, border: semanticTokens.border.default, radius: primitives.radius.medium },
+  table: { header: semanticTokens.surface.page, hover: semanticTokens.surface.hover, rowHeight: primitives.size.gridRow },
+  badge: semanticTokens.status,
+  overlay: { background: semanticTokens.surface.elevated, border: semanticTokens.border.default },
+  metric: { text: semanticTokens.text.primary, label: semanticTokens.text.secondary },
+  alert: semanticTokens.status,
+  chart: semanticTokens.chart,
+} as const;
+
+export const settleTokens = {
+  fontFamily: primitives.typography.family,
+  fontSize: primitives.typography.compact,
+  ink: semanticTokens.text.primary,
+  muted: semanticTokens.text.secondary,
+  border: semanticTokens.border.default,
+  borderStrong: semanticTokens.border.strong,
+  surface: semanticTokens.surface.card,
+  surfaceSoft: semanticTokens.surface.page,
+  surfaceSunken: semanticTokens.surface.sunken,
+  accent: semanticTokens.action.primary,
+  accentBright: semanticTokens.action.primary,
+  accentSoft: semanticTokens.surface.hover,
+  radius: primitives.radius.medium,
+  radiusSmall: primitives.radius.small,
+  spacing: 7,
+  rowHeight: componentTokens.table.rowHeight,
+  headerHeight: primitives.size.gridHeader,
+  status: semanticTokens.status,
+  chartPalette: semanticTokens.chart,
 } as const;
 
 export const settleGridParams = {
@@ -55,8 +92,8 @@ export const settleGridParams = {
   rowHeight: settleTokens.rowHeight,
   spacing: settleTokens.spacing,
   rowHoverColor: settleTokens.accentSoft,
-  selectedRowBackgroundColor: "#d5ece5",
-  oddRowBackgroundColor: "#fbfdfc",
+  selectedRowBackgroundColor: primitives.neutral.sunken,
+  oddRowBackgroundColor: primitives.neutral.white,
   chromeBackgroundColor: settleTokens.surfaceSoft,
   wrapperBorderRadius: settleTokens.radius,
   borderRadius: settleTokens.radiusSmall,
@@ -64,8 +101,8 @@ export const settleGridParams = {
   sideButtonSelectedUnderlineColor: settleTokens.accent,
   statusBarLabelColor: settleTokens.muted,
   statusBarValueColor: settleTokens.ink,
-  valueChangeValueHighlightBackgroundColor: "#c9ebe0",
-  focusShadow: { spread: 3, color: "#0b6c5959" },
+  valueChangeValueHighlightBackgroundColor: primitives.neutral.sunken,
+  focusShadow: { spread: 3, color: primitives.brand.inkberry },
 } as const;
 
 /** The single grid theme. Passed to every `AgGridReact` through the `theme` grid option. */
@@ -95,7 +132,7 @@ export const settleStudioParams = {
   studioPanelContainerBorderRadius: settleTokens.radius,
   studioToggleButtonActiveBackgroundColor: settleTokens.accent,
   studioToggleButtonActiveBorderColor: settleTokens.accent,
-  studioToggleButtonActiveColor: settleTokens.accent,
+  studioToggleButtonActiveColor: primitives.neutral.inverse,
   // Canvas and widgets
   studioCanvasBackgroundColor: settleTokens.surfaceSoft,
   studioCanvasFontFamily: settleTokens.fontFamily,
@@ -166,6 +203,31 @@ export const settleChartTheme: AgChartTheme = {
 /** Publish the tokens as CSS custom properties. Called once at start-up on the document root. */
 export function applyDesignTokens(element: HTMLElement = document.documentElement): void {
   const set = (name: string, value: string) => element.style.setProperty(`--settle-${name}`, value);
+  set("component-button-primary", componentTokens.button.primary);
+  set("component-button-primary-hover", componentTokens.button.primaryHover);
+  set("component-button-primary-text", componentTokens.button.primaryText);
+  set("component-control-height", `${componentTokens.input.height}px`);
+  set("component-card-background", componentTokens.card.background);
+  set("component-card-border", componentTokens.card.border);
+  set("component-navigation-selected", componentTokens.navigation.selected);
+  set("focus", semanticTokens.focus);
+  set("font-body-size", `${primitives.typography.body}px`);
+  set("heading-1-size", `${primitives.typography.heading1}px`);
+  set("heading-2-size", `${primitives.typography.heading2}px`);
+  set("heading-3-size", `${primitives.typography.heading3}px`);
+  set("elevation-raised", primitives.elevation.raised);
+  set("layer-sticky", String(primitives.layer.sticky));
+  set("layer-overlay", String(primitives.layer.overlay));
+  set("brand-inkberry", primitives.brand.inkberry);
+  set("brand-haze", primitives.brand.haze);
+  set("brand-citrus", primitives.brand.citrus);
+  set("page", primitives.neutral.page);
+  set("inverse", primitives.neutral.inverse);
+  set("dark-soft", primitives.neutral.darkSoft);
+  set("motion-fast", primitives.motion.fast);
+  set("motion-normal", primitives.motion.normal);
+  set("motion-easing", primitives.motion.easing);
+  primitives.spacing.forEach((value, index) => set(`space-${index}`, `${value}px`));
   set("font", settleTokens.fontFamily);
   set("font-size", `${settleTokens.fontSize}px`);
   set("ink", settleTokens.ink);

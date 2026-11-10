@@ -79,12 +79,12 @@ export default function WorkspaceApp() {
   }
 
   if (session === null) {
-    return <main><p>Reading session…</p>{error !== null && <p className="error-text" role="alert">{error}</p>}</main>;
+    return <main className="workspace-page"><p role="status">Reading session…</p>{error !== null && <p className="error-text" role="alert">{error}</p>}</main>;
   }
 
   if (!session.authenticated) {
     return (
-      <main>
+      <main className="workspace-page workspace-signin">
         <h2>Owner sign-in</h2>
         <p>
           The operational workspace is the only place that can submit a PayPal payment. Sign-in uses
@@ -117,7 +117,7 @@ export default function WorkspaceApp() {
   const operational: Workspace[] = session.workspaces.filter((workspace) => workspace.kind === "operational");
 
   return (
-    <main>
+    <main className="workspace-page">
       <h2>Operational workspace</h2>
       <p className="panel-line">
         Signed in as <strong>{session.user?.displayName}</strong>.{" "}

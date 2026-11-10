@@ -251,10 +251,10 @@ export default function App() {
           inside a weekly cap the owner sets.
         </p>
         <nav className="app-nav" aria-label="Product views">
-          <button onClick={() => setView("workspace")}>Operational workspace</button>
-          <button onClick={() => setView("allocation")}>Allocation agent</button>
-          <button onClick={() => setView("transactions")}>Verified transactions</button>
-          <button onClick={() => setView("dashboard")}>Legacy payout workflow</button>
+          <button type="button" aria-current={view === "workspace" ? "page" : undefined} onClick={() => setView("workspace")}>Operational workspace</button>
+          <button type="button" aria-current={view === "allocation" ? "page" : undefined} onClick={() => setView("allocation")}>Allocation agent</button>
+          <button type="button" aria-current={view === "transactions" ? "page" : undefined} onClick={() => setView("transactions")}>Verified transactions</button>
+          <button type="button" aria-current={view === "dashboard" ? "page" : undefined} onClick={() => setView("dashboard")}>Legacy payout workflow</button>
         </nav>
         <p>
           Sender: US sandbox test account, not a real Indian studio.{" "}

@@ -9,10 +9,14 @@
     "test:app": "npm --prefix app test",
     "test:e2e": "playwright test",
     "typecheck": "npm --prefix app exec -- tsc -p tsconfig.server.json",
-    "verify": "npm run typecheck && npm test && npm --prefix app test && npm --prefix app run build && npm run test:e2e",
-    "inspect:db": "node --experimental-strip-types scripts/inspect-product-db.ts"
+    "verify": "npm run typecheck && npm test && npm --prefix app test && npm --prefix app run build && npm run test:e2e && npm run inventory:check",
+    "inspect:db": "node --experimental-strip-types scripts/inspect-product-db.ts",
+    "inventory:frontend": "node scripts/frontend-inventory.mjs",
+    "inventory:check": "node scripts/frontend-inventory.mjs --check"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@babel/parser": "^8.1.0",
     "@playwright/test": "^1.65.0",
     "@sparticuz/chromium": "^153.0.0",
     "fast-check": "^4.10.2"

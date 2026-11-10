@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './transaction.css'
 import './allocation.css'
+import './operations/operations.css'
 import App from './App.tsx'
 import { SettleStudioProvider } from './ag/StudioProvider.tsx'
 
