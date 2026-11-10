@@ -154,6 +154,22 @@ test("reconciliation discrepancies are idempotent, durable and audit is immutabl
   assert.equal(reopened.getDiscrepancies().length, 1);
 });
 
+test("provider acknowledgement and independent reconciliation retain distinct evidence timestamps and run identity", () => {
+  const { store, path } = setup();
+  const reservation = approved(store);
+  const attempt = store.beginSubmission(reservation.paymentId, T0);
+  const run = store.beginReconciliation(T0);
+  store.recordPayoutItem({ paymentId: reservation.paymentId, senderBatchId: attempt.senderBatchId, payoutBatchId: "PB-RECONCILED", payoutItemId: "PI-RECONCILED", transactionId: "TX-RECONCILED", activityId: null, recipientEmail: "verified@example.test", amountCents: 6000, currency: "USD", status: "SUCCESS", providerTimestamp: inside, raw: { provider: "read-back fixture" }, reconciliationRunId: run, reconciledAt: T0 });
+  store.completeReconciliation(run, T0, 1, 1);
+  const item = store.getPayoutItem(reservation.paymentId);
+  assert.equal(item?.lastReconciledAt, T0);
+  assert.equal(item?.reconciliationRunId, run);
+  assert.ok(item?.ingestedAt);
+  assert.equal(store.getReconciliationRun(run)?.status, "succeeded");
+  store.close();
+  assert.equal(new FinancialStore(path).getPayoutItem(reservation.paymentId)?.reconciliationRunId, run);
+});
+
 test("invoice evidence is distinct from payment evidence and preserves raw provider object", () => {
   const { store } = setup();
   store.recordInvoiceEvidence({ internalInvoiceId: "invoice-1", paypalInvoiceId: "INV2-TEST", invoiceNumber: "N-1", status: "SENT", amountCents: 1000, currency: "USD", jobIds: ["job-1"], endpoint: "/v2/invoicing/invoices/INV2-TEST", retrievedAt: T0, raw: { id: "INV2-TEST", status: "SENT" } });

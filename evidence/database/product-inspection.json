@@ -1,0 +1,115 @@
+{
+  "inspectedAt": "2026-11-10T08:08:57.970Z",
+  "database": "/tmp/settle-p5-inspect.db",
+  "method": "Direct read-only SQLite inspection, not a product API status",
+  "tables": [
+    {
+      "name": "payments"
+    },
+    {
+      "name": "payout_items"
+    },
+    {
+      "name": "product_audit"
+    },
+    {
+      "name": "product_decisions"
+    },
+    {
+      "name": "product_jobs"
+    },
+    {
+      "name": "product_memberships"
+    },
+    {
+      "name": "product_receipts"
+    },
+    {
+      "name": "product_sessions"
+    },
+    {
+      "name": "product_users"
+    },
+    {
+      "name": "product_workspace_policies"
+    },
+    {
+      "name": "product_workspaces"
+    },
+    {
+      "name": "reconciliation_runs"
+    }
+  ],
+  "demoJobs": [
+    {
+      "job_id": "demo-approval",
+      "workspace_id": "demo",
+      "origin": "synthetic",
+      "provider_environment": "none",
+      "approval_state": "not_approved"
+    },
+    {
+      "job_id": "demo-brand",
+      "workspace_id": "demo",
+      "origin": "synthetic",
+      "provider_environment": "none",
+      "approval_state": "approved"
+    },
+    {
+      "job_id": "demo-license",
+      "workspace_id": "demo",
+      "origin": "synthetic",
+      "provider_environment": "none",
+      "approval_state": "approved"
+    },
+    {
+      "job_id": "demo-retouch",
+      "workspace_id": "demo",
+      "origin": "synthetic",
+      "provider_environment": "none",
+      "approval_state": "approved"
+    }
+  ],
+  "demoReceipts": [
+    {
+      "receipt_id": "demo-historical-receipt",
+      "workspace_id": "demo",
+      "payment_id": null,
+      "origin": "seed",
+      "provider_environment": "sandbox",
+      "verification_state": "historical_evidence_only",
+      "payout_batch_id": "RBZ4V8LCSSK5W",
+      "payout_item_id": null,
+      "transaction_id": null,
+      "last_reconciled_at": null,
+      "reconciliation_run_id": null
+    }
+  ],
+  "demoLedgerContamination": [
+    {
+      "linked_demo_payments": 0
+    }
+  ],
+  "isolationTriggers": [
+    {
+      "name": "demo_job_origin_insert"
+    },
+    {
+      "name": "demo_job_origin_update"
+    },
+    {
+      "name": "demo_receipt_isolation_insert"
+    },
+    {
+      "name": "demo_receipt_isolation_update"
+    },
+    {
+      "name": "operational_receipt_origin"
+    }
+  ],
+  "reconciliationSchema": [
+    {
+      "sql": "CREATE TABLE reconciliation_runs (\n        run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, completed_at TEXT,\n        status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed')),\n        batches_read INTEGER NOT NULL DEFAULT 0, items_recorded INTEGER NOT NULL DEFAULT 0\n      )"
+    }
+  ]
+}

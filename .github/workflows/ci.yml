@@ -16,5 +16,5 @@ jobs:
         run: npm test
       - name: Dashboard install and build
         run: |
-          npm --prefix app install
+          npm --prefix app ci
           npm --prefix app run build

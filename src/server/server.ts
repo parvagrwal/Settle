@@ -19,6 +19,7 @@ import { seedJobs } from "./seed.ts";
 import { TransactionStore } from "./transactionStore.ts";
 import { AllocationStore } from "./allocationStore.ts";
 import { FinancialStore } from "./financialStore.ts";
+import { ProductStore } from "./productStore.ts";
 
 function loadEnv(path = ".env"): void {
   try {
@@ -71,6 +72,7 @@ if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
 const transactionStore = new TransactionStore(dbPath);
 const allocationStore = new AllocationStore(dbPath);
 const financialStore = new FinancialStore(dbPath);
+const productStore = new ProductStore(dbPath);
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "app", "dist");
 const distReady = existsSync(join(appDir, "index.html"));
 if (!distReady) {
@@ -89,6 +91,7 @@ const app = createSettleServer({
   transactionStore,
   allocationStore,
   financialStore,
+  productStore,
   webhookId: process.env.PAYPAL_WEBHOOK_ID,
   staticDir: distReady ? appDir : undefined,
 });
@@ -113,6 +116,7 @@ async function shutdown(): Promise<void> {
   transactionStore.close();
   allocationStore.close();
   financialStore.close();
+  productStore.close();
 }
 process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
 process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });

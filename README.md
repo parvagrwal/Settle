@@ -49,6 +49,14 @@ PayPal tools used: Payouts REST API (pay the batch), Invoicing API v2 (bill the 
 
 The dashboard is built with AG Studio 3.0 (AG Grid's dashboard builder) plus `ag-grid-react` 36.2.0 and AG Charts 14.2. If AG Studio fails to load, the plain grid view takes over at once, so the payout rows are never a blank screen.
 
+## Product workspace API
+
+Beyond the dashboard, the server also exposes a durable workspace API under `/api/product/*`. A workspace is a studio with an owner, a session, jobs, decisions, a policy and receipts, all stored in the same SQLite file as the financial ledger. The demo workspace is illustrative (synthetic jobs, one historical-only receipt); an operational workspace is private to the signed-in owner. Demo and operational data are kept apart by database triggers, so a demo job can never obtain a permanent payment identity.
+
+The API covers: owner sign-in (the owner token is exchanged for a server session cookie), workspace setup, job creation and approval, payment through the same ledger flow, reconciliation, receipt detail with the raw provider evidence, and policy changes (per-payment and weekly caps, approval expiry). Every operational write requires the owner session; anonymous reads of an operational workspace are refused.
+
+There is no dashboard screen for this API yet. Inspect it from a terminal with `npm run inspect:db`, which prints the workspaces, their jobs and receipts, and the isolation triggers, without exposing sessions or operational recipients. See `docs/PRODUCT-ARCHITECTURE.md` and `docs/PRODUCT-DELIVERY.md`.
+
 ## The guardrails
 
 - **$200 per payment.** A payment over $200 waits for the owner, with the exact reason and the amount over the cap on screen.

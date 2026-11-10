@@ -2,6 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 
 export type FinancialActor = { actorId: string; role: "owner" | "operator" | "viewer" | "agent" };
+export type FinancialPayment = { paymentId: string; jobId: string; idempotencyKey: string; recipientEmail: string; amountCents: number; currency: string; policyVersion: number; status: string; approvedBy: string; approvedAt: string; reservedAt: string | null; submittedAt: string | null; confirmedAt: string | null; failureReason: string | null };
+export type PayoutItem = { paymentId: string; senderBatchId: string; payoutBatchId: string; payoutItemId: string; transactionId: string | null; activityId: string | null; status: string; providerTimestamp: string; ingestedAt: string | null; lastReconciledAt: string | null; reconciliationRunId: string | null; raw: unknown };
 type Row = Record<string, unknown>;
 
 function cents(value: number, name: string): void {
@@ -57,7 +59,8 @@ export class FinancialStore {
         payout_batch_id TEXT NOT NULL, payout_item_id TEXT UNIQUE NOT NULL,
         transaction_id TEXT UNIQUE, activity_id TEXT UNIQUE, recipient_email TEXT NOT NULL,
         amount_cents INTEGER NOT NULL, currency TEXT NOT NULL, status TEXT NOT NULL,
-        provider_timestamp TEXT NOT NULL, raw_json TEXT NOT NULL, updated_at TEXT NOT NULL
+        provider_timestamp TEXT NOT NULL, raw_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+        ingested_at TEXT, last_reconciled_at TEXT, reconciliation_run_id TEXT
       );
       CREATE INDEX IF NOT EXISTS payout_items_status_time ON payout_items(status,provider_timestamp);
       CREATE TABLE IF NOT EXISTS provider_spend (
@@ -67,6 +70,11 @@ export class FinancialStore {
       );
       CREATE INDEX IF NOT EXISTS provider_spend_window ON provider_spend(currency,status,provider_timestamp);
       CREATE TABLE IF NOT EXISTS reconciliation_state (id INTEGER PRIMARY KEY CHECK(id=1), last_success_at TEXT);
+      CREATE TABLE IF NOT EXISTS reconciliation_runs (
+        run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, completed_at TEXT,
+        status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed')),
+        batches_read INTEGER NOT NULL DEFAULT 0, items_recorded INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS reconciliation_discrepancies (
         discrepancy_id TEXT PRIMARY KEY, payment_id TEXT, type TEXT NOT NULL,
         details_json TEXT NOT NULL, detected_at TEXT NOT NULL, resolved_at TEXT
@@ -88,6 +96,10 @@ export class FinancialStore {
       CREATE TRIGGER IF NOT EXISTS financial_audit_no_delete BEFORE DELETE ON financial_audit
       BEGIN SELECT RAISE(ABORT,'immutable financial audit'); END;
     `);
+    const payoutColumns = (this.db.prepare("PRAGMA table_info(payout_items)").all() as Row[]).map((row) => String(row.name));
+    for (const column of ["ingested_at", "last_reconciled_at", "reconciliation_run_id"]) {
+      if (!payoutColumns.includes(column)) this.db.exec(`ALTER TABLE payout_items ADD COLUMN ${column} TEXT`);
+    }
   }
   path(): string { return this.dbPath; }
   close(): void { this.db.close(); }
@@ -185,6 +197,29 @@ export class FinancialStore {
     iso(at);
     this.db.prepare("INSERT INTO reconciliation_state(id,last_success_at) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET last_success_at=excluded.last_success_at").run(at);
   }
+  beginReconciliation(at: string): string {
+    iso(at);
+    const runId = randomUUID();
+    this.db.prepare("INSERT INTO reconciliation_runs(run_id,started_at,status) VALUES(?,?,'running')").run(runId, at);
+    return runId;
+  }
+  completeReconciliation(runId: string, at: string, batchesRead: number, itemsRecorded: number): void {
+    iso(at);
+    if (!Number.isSafeInteger(batchesRead) || batchesRead < 0 || !Number.isSafeInteger(itemsRecorded) || itemsRecorded < 0) throw new Error("invalid reconciliation counts");
+    this.tx(() => {
+      const result = this.db.prepare("UPDATE reconciliation_runs SET completed_at=?,status='succeeded',batches_read=?,items_recorded=? WHERE run_id=? AND status='running'").run(at, batchesRead, itemsRecorded, runId);
+      if (result.changes !== 1) throw new Error("unknown or completed reconciliation run");
+      this.markReconciled(at);
+      this.audit("system", "reconciliation_completed", runId, "running", { status: "succeeded", batchesRead, itemsRecorded }, at, runId);
+    });
+  }
+  failReconciliation(runId: string, at: string): void {
+    this.db.prepare("UPDATE reconciliation_runs SET completed_at=?,status='failed' WHERE run_id=? AND status='running'").run(at, runId);
+  }
+  getReconciliationRun(runId: string): Row | null {
+    const row = this.db.prepare("SELECT * FROM reconciliation_runs WHERE run_id=?").get(runId) as Row | undefined;
+    return row ? { runId: String(row.run_id), startedAt: String(row.started_at), completedAt: row.completed_at ? String(row.completed_at) : null, status: String(row.status), batchesRead: Number(row.batches_read), itemsRecorded: Number(row.items_recorded) } : null;
+  }
   recordProviderSpend(opts: { paymentKey: string; amountCents: number; currency: string; status: string; providerTimestamp: string }): void {
     cents(opts.amountCents, "provider amount"); iso(opts.providerTimestamp);
     if (opts.currency !== "USD") throw new Error("mixed currencies are not supported by this cap policy");
@@ -218,7 +253,7 @@ export class FinancialStore {
     if (!payment || !attempt) throw new Error("no durable submission to recover");
     return { status: String(payment.status), idempotencyKey: String(payment.idempotency_key), senderBatchId: String(attempt.sender_batch_id) };
   }
-  recordPayoutItem(opts: { paymentId: string; senderBatchId: string; payoutBatchId: string; payoutItemId: string; transactionId: string | null; activityId: string | null; recipientEmail: string; amountCents: number; currency: string; status: string; providerTimestamp: string; raw: Row }): void {
+  recordPayoutItem(opts: { paymentId: string; senderBatchId: string; payoutBatchId: string; payoutItemId: string; transactionId: string | null; activityId: string | null; recipientEmail: string; amountCents: number; currency: string; status: string; providerTimestamp: string; raw: Row; reconciliationRunId?: string; reconciledAt?: string }): void {
     const supported = ["SUCCESS", "FAILED", "PENDING", "UNCLAIMED", "RETURNED", "ONHOLD", "BLOCKED", "REFUNDED", "REVERSED"];
     if (!supported.includes(opts.status)) throw new Error("unsupported provider item status"); iso(opts.providerTimestamp);
     const payment = this.db.prepare("SELECT * FROM payments WHERE payment_id=?").get(opts.paymentId) as Row | undefined;
@@ -245,9 +280,11 @@ export class FinancialStore {
       throw new Error("provider recipient, amount or currency mismatch");
     }
     this.tx(() => {
-      this.db.prepare(`INSERT INTO payout_items(payment_id,sender_batch_id,payout_batch_id,payout_item_id,transaction_id,activity_id,recipient_email,amount_cents,currency,status,provider_timestamp,raw_json,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(payment_id) DO UPDATE SET status=excluded.status,transaction_id=excluded.transaction_id,activity_id=excluded.activity_id,provider_timestamp=excluded.provider_timestamp,raw_json=excluded.raw_json,updated_at=datetime('now')`)
-        .run(opts.paymentId, opts.senderBatchId, opts.payoutBatchId, opts.payoutItemId, opts.transactionId, opts.activityId, opts.recipientEmail, opts.amountCents, opts.currency, opts.status, opts.providerTimestamp, JSON.stringify(opts.raw));
+      const ingestedAt = new Date().toISOString();
+      this.db.prepare(`INSERT INTO payout_items(payment_id,sender_batch_id,payout_batch_id,payout_item_id,transaction_id,activity_id,recipient_email,amount_cents,currency,status,provider_timestamp,raw_json,updated_at,ingested_at,last_reconciled_at,reconciliation_run_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(payment_id) DO UPDATE SET status=excluded.status,transaction_id=excluded.transaction_id,activity_id=excluded.activity_id,provider_timestamp=excluded.provider_timestamp,raw_json=excluded.raw_json,updated_at=excluded.updated_at,
+        last_reconciled_at=COALESCE(excluded.last_reconciled_at,payout_items.last_reconciled_at),reconciliation_run_id=COALESCE(excluded.reconciliation_run_id,payout_items.reconciliation_run_id)`)
+        .run(opts.paymentId, opts.senderBatchId, opts.payoutBatchId, opts.payoutItemId, opts.transactionId, opts.activityId, opts.recipientEmail, opts.amountCents, opts.currency, opts.status, opts.providerTimestamp, JSON.stringify(opts.raw), ingestedAt, ingestedAt, opts.reconciliationRunId ? (opts.reconciledAt ?? ingestedAt) : null, opts.reconciliationRunId ?? null);
       const next = opts.status === "SUCCESS" ? "provider_confirmed" : opts.status === "FAILED" ? "failed" : opts.status.toLowerCase();
       this.db.prepare("UPDATE payments SET status=?,confirmed_at=CASE WHEN ?='SUCCESS' THEN ? ELSE confirmed_at END WHERE payment_id=?").run(next, opts.status, opts.providerTimestamp, opts.paymentId);
       if (opts.status === "SUCCESS" || ["RETURNED", "REVERSED", "REFUNDED"].includes(opts.status)) {
@@ -260,20 +297,20 @@ export class FinancialStore {
     const rows = this.db.prepare("SELECT * FROM recipients ORDER BY verified_at").all() as Row[];
     return rows.map((row) => ({ recipientId: String(row.recipient_id), email: String(row.email), verifiedBy: String(row.verified_by), verifiedAt: String(row.verified_at) }));
   }
-  getPayoutItem(paymentId: string): Row | null {
+  getPayoutItem(paymentId: string): PayoutItem | null {
     const row = this.db.prepare("SELECT * FROM payout_items WHERE payment_id=?").get(paymentId) as Row | undefined;
-    return row ? { paymentId, senderBatchId: String(row.sender_batch_id), payoutBatchId: String(row.payout_batch_id), payoutItemId: String(row.payout_item_id), transactionId: row.transaction_id ? String(row.transaction_id) : null, activityId: row.activity_id ? String(row.activity_id) : null, status: String(row.status), providerTimestamp: String(row.provider_timestamp), raw: JSON.parse(String(row.raw_json)) } : null;
+    return row ? { paymentId, senderBatchId: String(row.sender_batch_id), payoutBatchId: String(row.payout_batch_id), payoutItemId: String(row.payout_item_id), transactionId: row.transaction_id ? String(row.transaction_id) : null, activityId: row.activity_id ? String(row.activity_id) : null, status: String(row.status), providerTimestamp: String(row.provider_timestamp), ingestedAt: row.ingested_at ? String(row.ingested_at) : null, lastReconciledAt: row.last_reconciled_at ? String(row.last_reconciled_at) : null, reconciliationRunId: row.reconciliation_run_id ? String(row.reconciliation_run_id) : null, raw: JSON.parse(String(row.raw_json)) } : null;
   }
-  getPaymentByJob(jobId: string): { paymentId: string; jobId: string; idempotencyKey: string; recipientEmail: string; amountCents: number; currency: string; policyVersion: number; status: string; approvedAt: string } | null {
+  getPaymentByJob(jobId: string): FinancialPayment | null {
     const row = this.db.prepare("SELECT * FROM payments WHERE job_id=?").get(jobId) as Row | undefined;
     return row ? this.paymentRow(row) : null;
   }
-  getPaymentByIdempotency(key: string): { paymentId: string; jobId: string; idempotencyKey: string; recipientEmail: string; amountCents: number; currency: string; policyVersion: number; status: string; approvedAt: string } | null {
+  getPaymentByIdempotency(key: string): FinancialPayment | null {
     const row = this.db.prepare("SELECT * FROM payments WHERE idempotency_key=?").get(key) as Row | undefined;
     return row ? this.paymentRow(row) : null;
   }
   private paymentRow(row: Row) {
-    return { paymentId: String(row.payment_id), jobId: String(row.job_id), idempotencyKey: String(row.idempotency_key), recipientEmail: String(row.recipient_email), amountCents: Number(row.amount_cents), currency: String(row.currency), policyVersion: Number(row.policy_version), status: String(row.status), approvedAt: String(row.approved_at) };
+    return { paymentId: String(row.payment_id), jobId: String(row.job_id), idempotencyKey: String(row.idempotency_key), recipientEmail: String(row.recipient_email), amountCents: Number(row.amount_cents), currency: String(row.currency), policyVersion: Number(row.policy_version), status: String(row.status), approvedBy: String(row.approved_by), approvedAt: String(row.approved_at), reservedAt: row.reserved_at ? String(row.reserved_at) : null, submittedAt: row.submitted_at ? String(row.submitted_at) : null, confirmedAt: row.confirmed_at ? String(row.confirmed_at) : null, failureReason: row.failure_reason ? String(row.failure_reason) : null };
   }
   recordDiscrepancy(opts: { paymentId: string | null; type: string; details: Row; at: string }): string {
     // Reconciliation is read-only from the provider and may repeat the same

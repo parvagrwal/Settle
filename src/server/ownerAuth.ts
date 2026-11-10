@@ -22,6 +22,16 @@ function presentedToken(req: IncomingMessage): string | null {
   return null;
 }
 
+export function verifyOwnerToken(presented: string | null): { ok: true } | { ok: false; status: number; error: string } {
+  const configured = (process.env.SETTLE_OWNER_TOKEN ?? "").trim();
+  if (configured === "") return { ok: false, status: 503, error: "owner token is not configured, set SETTLE_OWNER_TOKEN in local .env only" };
+  if (presented === null || presented === "") return { ok: false, status: 401, error: "owner token is required for this route" };
+  const a = Buffer.from(presented, "utf8");
+  const b = Buffer.from(configured, "utf8");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, status: 401, error: "owner token is wrong" };
+  return { ok: true };
+}
+
 export function requireOwner(
   req: IncomingMessage,
 ): { ok: true } | { ok: false; status: number; error: string } {

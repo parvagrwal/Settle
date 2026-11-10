@@ -16,7 +16,7 @@ function timestamp(item: Row, now: string): string {
   for (const key of ["time_processed", "time_created", "time_updated"]) if (typeof item[key] === "string") return String(item[key]);
   return now;
 }
-async function providerItem(opts: Options, item: Row, senderBatchId: string, payoutBatchId: string, now: string): Promise<boolean> {
+async function providerItem(opts: Options, item: Row, senderBatchId: string, payoutBatchId: string, now: string, reconciliationRunId?: string): Promise<boolean> {
   const key = item.sender_item_id;
   const status = item.transaction_status;
   const id = item.payout_item_id;
@@ -33,33 +33,40 @@ async function providerItem(opts: Options, item: Row, senderBatchId: string, pay
     transactionId: typeof item.transaction_id === "string" ? item.transaction_id : null,
     activityId: typeof item.activity_id === "string" ? item.activity_id : null,
     recipientEmail: item.receiver, amountCents: minorUnits(money.value), currency: money.currency,
-    status, providerTimestamp: timestamp(item, now), raw: item });
+    status, providerTimestamp: timestamp(item, now), raw: item, reconciliationRunId, reconciledAt: reconciliationRunId ? now : undefined });
   return true;
 }
 
-export async function reconcilePayPal(opts: Options): Promise<{ batchesRead: number; itemsRecorded: number }> {
+export async function reconcilePayPal(opts: Options): Promise<{ batchesRead: number; itemsRecorded: number; reconciliationRunId: string }> {
   const end = opts.now?.() ?? new Date();
-  const start = new Date(end.getTime() - 169 * 60 * 60 * 1000);
-  let page = 1; let batchesRead = 0; let itemsRecorded = 0;
-  while (page <= 1000) {
-    const query = new URLSearchParams({ start_date: start.toISOString(), end_date: end.toISOString(), page: String(page), page_size: "100", total_required: "true" });
-    const { json } = await paypalRequest({ method: "GET", path: `${opts.baseUrl}/v1/payments/payouts?${query}`, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
-    const batches = Array.isArray(json.items) ? json.items as Row[] : [];
-    for (const batch of batches) {
-      const header = batch.batch_header as Row | undefined;
-      const batchId = header?.payout_batch_id; const senderId = header?.sender_batch_id;
-      if (typeof batchId !== "string" || typeof senderId !== "string") throw new Error("provider batch has incomplete identity");
-      const detail = await paypalRequest({ method: "GET", path: `${opts.baseUrl}/v1/payments/payouts/${batchId}`, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
-      const items = Array.isArray(detail.json.items) ? detail.json.items as Row[] : [];
-      for (const item of items) if (await providerItem(opts, item, senderId, batchId, end.toISOString())) itemsRecorded++;
-      batchesRead++;
+  const startedAt = end.toISOString();
+  const reconciliationRunId = opts.store.beginReconciliation(startedAt);
+  try {
+    const start = new Date(end.getTime() - 169 * 60 * 60 * 1000);
+    let page = 1; let batchesRead = 0; let itemsRecorded = 0;
+    while (page <= 1000) {
+      const query = new URLSearchParams({ start_date: start.toISOString(), end_date: end.toISOString(), page: String(page), page_size: "100", total_required: "true" });
+      const { json } = await paypalRequest({ method: "GET", path: `${opts.baseUrl}/v1/payments/payouts?${query}`, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
+      const batches = Array.isArray(json.items) ? json.items as Row[] : [];
+      for (const batch of batches) {
+        const header = batch.batch_header as Row | undefined;
+        const batchId = header?.payout_batch_id; const senderId = header?.sender_batch_id;
+        if (typeof batchId !== "string" || typeof senderId !== "string") throw new Error("provider batch has incomplete identity");
+        const detail = await paypalRequest({ method: "GET", path: `${opts.baseUrl}/v1/payments/payouts/${batchId}`, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
+        const items = Array.isArray(detail.json.items) ? detail.json.items as Row[] : [];
+        for (const item of items) if (await providerItem(opts, item, senderId, batchId, startedAt, reconciliationRunId)) itemsRecorded++;
+        batchesRead++;
+      }
+      const total = Number(json.total_items ?? batches.length);
+      if (batches.length === 0 || page * 100 >= total) break;
+      page++;
     }
-    const total = Number(json.total_items ?? batches.length);
-    if (batches.length === 0 || page * 100 >= total) break;
-    page++;
+    opts.store.completeReconciliation(reconciliationRunId, startedAt, batchesRead, itemsRecorded);
+    return { batchesRead, itemsRecorded, reconciliationRunId };
+  } catch (error) {
+    opts.store.failReconciliation(reconciliationRunId, new Date().toISOString());
+    throw error;
   }
-  opts.store.markReconciled(end.toISOString());
-  return { batchesRead, itemsRecorded };
 }
 
 export async function submitApprovedPayment(opts: Options & { jobId: string }): Promise<{ status: string; batchStatus?: string; item: ReturnType<FinancialStore["getPayoutItem"]> }> {

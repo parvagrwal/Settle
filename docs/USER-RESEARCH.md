@@ -1,5 +1,7 @@
 # User-problem validation status
 
+> **2026-11-10 product-comprehension protocol:** see [Fresh-reader validation](FRESH-READER-VALIDATION.md). That experiment is also uncompleted; no participants were recruited. The customer-problem limitations below remain unchanged.
+
 **Status: unvalidated with real users as of 2026-11-09.** No studio owner, freelancer, project manager or payment administrator was interviewed or observed in this session. Meera, the six-person studio and the three-hour weekly loss remain illustrative; they are not evidence.
 
 ## Research limitation

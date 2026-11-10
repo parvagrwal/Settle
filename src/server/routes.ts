@@ -29,6 +29,8 @@ import { executeApprovedPlan } from "./planExecution.ts";
 import { FinancialStore } from "./financialStore.ts";
 import { reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
 import { createHash } from "node:crypto";
+import type { ProductStore } from "./productStore.ts";
+import { handleProductRoute } from "./productRoutes.ts";
 
 export interface GridRow {
   job_id: string;
@@ -159,6 +161,8 @@ export function createSettleServer(opts: {
   allocationStore?: AllocationStore;
   /** Durable internal authorization, reservations and provider identity. */
   financialStore?: FinancialStore;
+  /** Persistent authenticated workspace and product provenance model. */
+  productStore?: ProductStore;
 }): SettleServer {
   const store: SettleStore = {
     jobs: opts.jobs,
@@ -213,7 +217,7 @@ export function createSettleServer(opts: {
   syncLegacyFromFinancial();
   // Migrate already owner-approved jobs once; unpaid demos are authorization
   // records, never provider payment evidence.
-  for (const job of store.jobs.filter((row) => row.approval_state === "approved" && row.status !== "paid" && row.amount_cents <= financial.getPolicy().perPaymentCapCents)) {
+  if (!opts.productStore) for (const job of store.jobs.filter((row) => row.approval_state === "approved" && row.status !== "paid" && row.amount_cents <= financial.getPolicy().perPaymentCapCents)) {
     const id = recipientId(job.paypal_email);
     if (!financial.getRecipient(id)) financial.verifyRecipient({ recipientId: id, email: job.paypal_email, actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
     if (!financial.getPaymentByJob(job.job_id)) financial.approvePayment({ jobId: job.job_id, recipientId: id, amountCents: job.amount_cents, currency: "USD", actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
@@ -223,6 +227,8 @@ export function createSettleServer(opts: {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
       const path = url.pathname;
+
+      if (await handleProductRoute(req, res, path, { productStore: opts.productStore, financialStore: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn })) return;
 
       if (req.method === "GET" && path === "/api/jobs") {
         sendJson(res, 200, { jobs: store.jobs });
