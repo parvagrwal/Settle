@@ -33,12 +33,15 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
   const { jobs, rows, caps, paying, payError, onApprove, onPay } = props;
   const { runBudgetDollars, onRunBudgetChange, holdCandidates, holdReason, selectedIds, onToggleSelect, onPaySelected, ownerTokenSet } = props;
   const perPaymentCap = caps?.per_payment_cap_cents ?? 20000;
-  const weeklyCap = caps?.weekly_cap_cents ?? 150000;
+  const weeklyCap = caps?.rolling_cap_cents ?? caps?.weekly_cap_cents ?? 150000;
 
   const paidRows = rows.filter((row) => row.status === "paid");
-  const waitingRows = rows.filter((row) => row.status === "waiting" || row.status === "waiting_for_meera");
-  const totalPaidCents = paidRows.reduce((sum, row) => sum + row.amount_cents, 0);
-  const remainingCents = weeklyCap - totalPaidCents;
+  const waitingRows = rows.filter((row) => row.status === "waiting" || row.status === "waiting_for_meera" || row.status === "blocked");
+  const fallbackPaidCents = paidRows.reduce((sum, row) => sum + row.amount_cents, 0);
+  const eligibleSpendCents = caps?.eligibleSpendCents ?? fallbackPaidCents;
+  const activeReservationsCents = caps?.activeReservationsCents ?? 0;
+  const committedCents = eligibleSpendCents + activeReservationsCents;
+  const remainingCents = caps?.remainingCents ?? Math.max(0, weeklyCap - committedCents);
   const needsApproval = jobs.filter((job) => job.approval_state !== "approved");
   // Only approved, waiting jobs can be paid: the count on the button must
   // match what the pay run will actually pay, so a job that still needs
@@ -55,10 +58,22 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
     <section className="panel" aria-label="Approval">
       <h2>Approve and pay</h2>
       <p className="panel-line">
-        Paid this week: <strong>{usd(totalPaidCents)}</strong> of a {usd(weeklyCap)} weekly cap.{" "}
+        Provider-confirmed rolling 168h spend: <strong>{usd(eligibleSpendCents)}</strong>
+        {activeReservationsCents > 0 ? (
+          <>
+            {" "}
+            + active reservations: <strong>{usd(activeReservationsCents)}</strong>
+          </>
+        ) : null}{" "}
+        of {usd(weeklyCap)} cap (policy v{caps?.policy_version ?? 1}).{" "}
         <strong>{usd(remainingCents)} left</strong>.
       </p>
-      <p className="panel-line">{caps?.worst_case_exposure ?? "Worst-case exposure: $1,500 per week."}</p>
+      <p className="panel-line">
+        {caps?.worst_case_exposure ?? "Worst-case configured exposure: $1500.00 per rolling 168 hours."}{" "}
+        {caps?.fresh
+          ? `Provider state fresh (${caps.lastSuccessfulReconciliation ?? "reconciled"}).`
+          : "Provider state not yet reconciled in this window (refreshed automatically before submission)."}
+      </p>
       {!ownerTokenSet && (
         <p className="panel-line" role="status">
           Enter the owner token at the top of the page to approve and pay. Approve and pay stay off
@@ -95,7 +110,7 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
         <ul>
           {waitingRows.map((row) => {
             const overPayment = overCapCents(row.amount_cents, perPaymentCap);
-            const overWeek = overCapCents(totalPaidCents + row.amount_cents, weeklyCap);
+            const overWeek = overCapCents(committedCents + row.amount_cents, weeklyCap);
             const leftAfter = remainingCents - row.amount_cents;
             return (
               <li key={row.job_id}>

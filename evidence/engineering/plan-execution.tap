@@ -1,0 +1,36 @@
+TAP version 13
+# (node:9749) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: every successful provider item completes approved plan and preserves payment identity
+ok 1 - every successful provider item completes approved plan and preserves payment identity
+  ---
+  duration_ms: 57.396286
+  type: 'test'
+  ...
+# Subtest: partial provider failure remains partial and does not erase successful evidence
+ok 2 - partial provider failure remains partial and does not erase successful evidence
+  ---
+  duration_ms: 31.269311
+  type: 'test'
+  ...
+# Subtest: ambiguous provider failure is outcome_unknown, not failed or blind retry
+ok 3 - ambiguous provider failure is outcome_unknown, not failed or blind retry
+  ---
+  duration_ms: 26.74534
+  type: 'test'
+  ...
+# Subtest: unapproved plan is denied before provider call
+ok 4 - unapproved plan is denied before provider call
+  ---
+  duration_ms: 16.633692
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 255.93075

@@ -166,3 +166,101 @@ not ok 1 - tests/investigation.test.ts
 # todo 0
 # duration_ms 117.731678
 ```
+
+## Durable financial core RED
+
+```text
+# Node.js v22.22.3
+# Subtest: tests/financialStore.test.ts
+not ok 1 - tests/financialStore.test.ts
+  ---
+  duration_ms: 75.742154
+  type: 'test'
+  location: '/home/user/Settle/tests/financialStore.test.ts:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 82.755617
+```
+
+## Durable financial core GREEN
+
+```text
+  ...
+# Subtest: invoice evidence is distinct from payment evidence and preserves raw provider object
+ok 10 - invoice evidence is distinct from payment evidence and preserves raw provider object
+  ---
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+```
+
+## Provider recovery RED
+
+```text
+  duration_ms: 86.406037
+  type: 'test'
+  location: '/home/user/Settle/tests/financialPayments.test.ts:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 92.523817
+```
+
+## Final financial-control REGRESSION (GREEN)
+
+Commands and verified outputs:
+
+```text
+node --test tests/financialStore.test.ts                  -> 11/11, fail 0
+node --test tests/financialPayments.test.ts               -> 3/3, fail 0
+node --test tests/planExecution.test.ts                   -> 4/4, fail 0
+node --test tests/financialHttpAdversarial.test.ts        -> 7/7, fail 0
+npm test                                                  -> 194/194, fail 0
+cd app && npm run build                                   -> tsc -b && vite build, exit 0
+```
+
+Full TAP/build outputs: `evidence/engineering/financial-store.tap`,
+`evidence/engineering/financial-payments.tap`,
+`evidence/engineering/plan-execution.tap`,
+`evidence/engineering/financial-http-adversarial.tap`,
+`evidence/engineering/full-regression.tap`, and
+`evidence/engineering/frontend-build.txt`.
+
+The adversarial suite initially exposed two integration defects: a fixture
+reported invoices as `SENT` before the send call, and a blind retry of an
+ambiguous `outcome_unknown` submission returned HTTP `202` rather than the
+test's assumed `200`. The fixture was corrected and the retry expectation was
+changed to the server's intentional fail-closed `202 OUTCOME_UNKNOWN`
+contract. Later GREEN runs added durable `FAILED` item projection after full
+server restart, HTTP `400` validation for non-positive/inconsistent owner
+policy values, idempotent discrepancy identity across repeated reconciliation,
+and a provider-fact mismatch discrepancy that survives the rejected item
+transaction's rollback.

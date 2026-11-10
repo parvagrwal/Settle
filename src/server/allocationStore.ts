@@ -20,7 +20,7 @@ export class AllocationStore {
       CREATE TABLE IF NOT EXISTS allocation_plans (
         plan_id TEXT PRIMARY KEY, context_id TEXT NOT NULL REFERENCES allocation_contexts(context_id),
         plan_json TEXT NOT NULL, plan_hash TEXT NOT NULL, reason_json TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('proposed','approved','rejected','executing','succeeded','failed')),
+        status TEXT NOT NULL CHECK(status IN ('proposed','approved','rejected','executing','succeeded','failed','outcome_unknown')),
         created_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS plan_approvals (
@@ -68,7 +68,8 @@ export class AllocationStore {
   getPlan(planId: string): StoredPlan | null {
     const row = this.db.prepare("SELECT * FROM allocation_plans WHERE plan_id = ?").get(planId) as Record<string, unknown> | undefined;
     if (!row) return null;
-    return { plan: JSON.parse(String(row.plan_json)) as AllocationPlan, status: String(row.status), reason: String(row.reason_json), planHash: String(row.plan_hash) };
+    const ambiguous = this.db.prepare("SELECT value FROM control_state WHERE key=?").get(`execution_outcome:${planId}`);
+    return { plan: JSON.parse(String(row.plan_json)) as AllocationPlan, status: ambiguous ? "outcome_unknown" : String(row.status), reason: String(row.reason_json), planHash: String(row.plan_hash) };
   }
 
   getContext(contextId: string): AllocationContext | null {
@@ -127,14 +128,15 @@ export class AllocationStore {
     return execution;
   }
 
-  completeExecution(executionId: string, providerBatchId: string, at: string): void {
+  completeExecution(executionId: string, providerBatchId: string | null, at: string): void {
     const row = this.db.prepare("SELECT plan_id FROM plan_executions WHERE execution_id = ?").get(executionId) as { plan_id: string } | undefined;
     if (!row) throw new Error("unknown execution");
     this.db.exec("BEGIN IMMEDIATE");
     try {
       this.db.prepare("UPDATE plan_executions SET provider_batch_id = ?, completed_at = ? WHERE execution_id = ?").run(providerBatchId, at, executionId);
       this.db.prepare("UPDATE allocation_plans SET status = 'succeeded' WHERE plan_id = ?").run(row.plan_id);
-      this.audit(row.plan_id, "server", "execution_completed", providerBatchId, at);
+      this.db.prepare("DELETE FROM control_state WHERE key = ?").run(`execution_outcome:${row.plan_id}`);
+      this.audit(row.plan_id, "server", "execution_completed", providerBatchId ?? "provider_confirmed", at);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
@@ -149,7 +151,20 @@ export class AllocationStore {
     try {
       this.db.prepare("UPDATE plan_executions SET provider_batch_id = ?, completed_at = ? WHERE execution_id = ?").run(providerBatchId, at, executionId);
       this.db.prepare("UPDATE allocation_plans SET status = 'failed' WHERE plan_id = ?").run(row.plan_id);
+      this.db.prepare("DELETE FROM control_state WHERE key = ?").run(`execution_outcome:${row.plan_id}`);
       this.audit(row.plan_id, "server", "execution_failed", reason, at);
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
+
+  markExecutionOutcomeUnknown(executionId: string, reason: string, at: string): void {
+    const row = this.db.prepare("SELECT plan_id FROM plan_executions WHERE execution_id = ?").get(executionId) as { plan_id: string } | undefined;
+    if (!row) throw new Error("unknown execution");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare("UPDATE plan_executions SET completed_at = ? WHERE execution_id = ?").run(at, executionId);
+      this.db.prepare("INSERT INTO control_state(key,value) VALUES(?, 'outcome_unknown') ON CONFLICT(key) DO UPDATE SET value='outcome_unknown'").run(`execution_outcome:${row.plan_id}`);
+      this.audit(row.plan_id, "server", "execution_outcome_unknown", reason, at);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }

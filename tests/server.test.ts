@@ -42,7 +42,8 @@ test("caps endpoint returns the locked caps and the worst-case line", async () =
     assert.equal(body.weekly_cap_cents, 150000);
     assert.equal(body.window_days, 7);
     assert.equal(body.approval_expiry_days, 7);
-    assert.equal(body.worst_case_exposure, "Worst-case exposure: $1,500 per week.");
+    assert.equal(body.worst_case_exposure, "Worst-case configured exposure: $1500.00 per rolling 168 hours.");
+    assert.equal(body.window_hours, 168);
   } finally {
     await app.close();
   }
@@ -83,13 +84,17 @@ test("static serving: home page, asset, missing asset 404, screen falls back to 
 
 test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the waiting jobs", async () => {
   let payoutCalls = 0;
+  let payoutItem: Record<string, unknown> | null = null;
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     const method = (init.method as string) ?? "GET";
     if (method === "POST") {
       payoutCalls++;
+      const body = JSON.parse(String(init.body)); const source = body.items[0];
+      payoutItem = { payout_item_id: `ITEM-${payoutCalls}`, transaction_id: `TX-${payoutCalls}`, activity_id: `ACT-${payoutCalls}`, sender_item_id: source.sender_item_id, transaction_status: "SUCCESS", receiver: source.receiver, payout_item: { amount: source.amount }, time_processed: new Date().toISOString() };
       return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "PENDING" } });
     }
-    return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "SUCCESS" } });
+    if (String(url).includes("?")) return mockResponse(200, { items: [], total_items: 0 });
+    return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "SUCCESS" }, items: payoutItem ? [payoutItem] : [] });
   }) as unknown as typeof fetch;
   const jobs = seedJobs("freelancer@example.com");
   const app = createSettleServer({
