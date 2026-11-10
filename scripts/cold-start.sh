@@ -30,6 +30,16 @@ if [ ! -f .env ]; then
   echo "To pay live in the sandbox, fill in the keys in .env and run this script again."
 fi
 
+db_path="${SETTLE_DB_PATH:-}"
+if [ -z "$db_path" ] && [ -f .env ]; then
+  db_path="$(grep -E '^SETTLE_DB_PATH=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]' || true)"
+fi
+db_path="${db_path:-data/settle.db}"
+if [ "$db_path" != ":memory:" ]; then
+  echo "Resetting local database ($db_path) for a clean 8-row demo start..."
+  rm -f "$db_path" "${db_path}-wal" "${db_path}-shm"
+fi
+
 echo "Installing dependencies... (first run takes about a minute in total)"
 npm install
 cd app

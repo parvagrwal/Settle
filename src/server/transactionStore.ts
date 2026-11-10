@@ -70,7 +70,8 @@ function payoutProjection(event: UnknownRecord): Projection {
   const resource = object(event.resource);
   const item = object(resource.payout_item);
   const amount = object(item.amount);
-  const fee = object(item.payout_item_fee);
+  const topFee = object(resource.payout_item_fee);
+  const fee = Object.keys(topFee).length > 0 ? topFee : object(item.payout_item_fee);
   const grossCents = moneyCents(amount.value);
   const feeCents = moneyCents(fee.value);
   const currency = text(amount.currency) ?? text(fee.currency);
@@ -87,11 +88,11 @@ function payoutProjection(event: UnknownRecord): Projection {
     feeCents,
     netCents: grossCents !== null && feeCents !== null ? grossCents - feeCents : null,
     payerEmail: null,
-    payeeEmail: text(item.receiver),
+    payeeEmail: text(item.receiver) ?? text(resource.receiver),
     paymentMethod: text(item.recipient_wallet),
     payoutBatchId: text(resource.payout_batch_id),
     payoutItemId: text(resource.payout_item_id),
-    jobId: text(item.sender_item_id),
+    jobId: text(item.sender_item_id) ?? text(resource.sender_item_id),
     relatedTransactionId: null,
     raw: resource,
   };
@@ -134,8 +135,9 @@ function project(event: UnknownRecord): Projection | null {
   requireText(event.id, "id");
   requireText(event.event_type, "event_type");
   requireText(event.create_time, "create_time");
-  if (String(event.event_type).startsWith("PAYOUTS.ITEM.")) return payoutProjection(event);
-  if (String(event.event_type).startsWith("PAYMENT.CAPTURE.")) return captureProjection(event);
+  const eventType = String(event.event_type);
+  if (eventType.startsWith("PAYMENT.PAYOUTS-ITEM.") || eventType.startsWith("PAYOUTS.ITEM.")) return payoutProjection(event);
+  if (eventType.startsWith("PAYMENT.CAPTURE.")) return captureProjection(event);
   return null;
 }
 

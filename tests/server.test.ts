@@ -84,17 +84,29 @@ test("static serving: home page, asset, missing asset 404, screen falls back to 
 
 test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the waiting jobs", async () => {
   let payoutCalls = 0;
-  let payoutItem: Record<string, unknown> | null = null;
+  const batches = new Map<string, Record<string, unknown>>();
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     const method = (init.method as string) ?? "GET";
     if (method === "POST") {
       payoutCalls++;
       const body = JSON.parse(String(init.body)); const source = body.items[0];
-      payoutItem = { payout_item_id: `ITEM-${payoutCalls}`, transaction_id: `TX-${payoutCalls}`, activity_id: `ACT-${payoutCalls}`, sender_item_id: source.sender_item_id, transaction_status: "SUCCESS", receiver: source.receiver, payout_item: { amount: source.amount }, time_processed: new Date().toISOString() };
-      return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "PENDING" } });
+      const batchId = `BATCH-SERVER-${payoutCalls}`;
+      batches.set(batchId, {
+        payout_item_id: `ITEM-${payoutCalls}`,
+        transaction_id: `TX-${payoutCalls}`,
+        activity_id: `ACT-${payoutCalls}`,
+        payout_item_fee: { value: "0.02", currency: "USD" },
+        payout_batch_id: batchId,
+        transaction_status: "SUCCESS",
+        payout_item: { sender_item_id: source.sender_item_id, receiver: source.receiver, amount: source.amount },
+        time_processed: new Date().toISOString(),
+      });
+      return mockResponse(201, { batch_header: { payout_batch_id: batchId, batch_status: "PENDING" } });
     }
-    if (String(url).includes("?")) return mockResponse(200, { items: [], total_items: 0 });
-    return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-SERVER", batch_status: "SUCCESS" }, items: payoutItem ? [payoutItem] : [] });
+    if (String(url).includes("?")) throw new Error(`unexpected list query: ${url}`);
+    const batchId = url.split("/").pop()!;
+    const item = batches.get(batchId);
+    return mockResponse(200, { batch_header: { payout_batch_id: batchId, batch_status: "SUCCESS" }, items: item ? [item] : [] });
   }) as unknown as typeof fetch;
   const jobs = seedJobs("freelancer@example.com");
   const app = createSettleServer({
@@ -141,7 +153,7 @@ test("pay with seed jobs: no key holds for the owner, then Pay Selected pays the
       rejected: Array<{ job_id: string; label: string }>;
       proposer: string;
     };
-    assert.equal(paid.payout_batch_id, "BATCH-SERVER");
+    assert.equal(paid.payout_batch_id, "BATCH-SERVER-1");
     assert.deepEqual(paid.accepted, ["demo-waiting-1", "demo-waiting-2"]);
     // The over-cap job is never a candidate: it waits for the owner,
     // and its seeded reason stays on its grid row instead of a fresh

@@ -46,6 +46,14 @@ function createStatefulPayPalMock(opts: {
           items: Array<{ sender_item_id: string; receiver: string; amount: { value: string; currency: string } }>;
         };
         postBodies.push(parsed as unknown as Record<string, unknown>);
+        const existingBatch = [...batches.entries()].find(([, entry]) => entry.senderBatchId === parsed.sender_batch_header.sender_batch_id);
+        if (existingBatch) {
+          return jsonResponse(400, {
+            name: "DUPLICATE_REQUEST_ID",
+            message: "Duplicate sender batch id",
+            links: [{ href: `https://api-m.sandbox.paypal.com/v1/payments/payouts/${existingBatch[0]}`, rel: "self", method: "GET" }],
+          });
+        }
         const src = parsed.items[0];
         const batchId = `BATCH-ADV-${++batchSeq}`;
         batches.set(batchId, {
@@ -54,10 +62,14 @@ function createStatefulPayPalMock(opts: {
             payout_item_id: `ITEM-${batchSeq}`,
             transaction_id: `TX-${batchSeq}`,
             activity_id: `ACT-${batchSeq}`,
-            sender_item_id: src.sender_item_id,
+            payout_item_fee: { value: "0.02", currency: "USD" },
+            payout_batch_id: batchId,
             transaction_status: itemStatus,
-            receiver: src.receiver,
-            payout_item: { amount: src.amount },
+            payout_item: {
+              sender_item_id: src.sender_item_id,
+              receiver: src.receiver,
+              amount: src.amount,
+            },
             time_processed: new Date().toISOString(),
           },
         });
@@ -67,28 +79,20 @@ function createStatefulPayPalMock(opts: {
         return jsonResponse(201, { batch_header: { payout_batch_id: batchId, batch_status: "PENDING" } });
       }
       if (url.includes("?")) {
-        const allBatches = [
-          ...[...batches.entries()].map(([batchId, entry]) => ({
-            batch_header: { payout_batch_id: batchId, sender_batch_id: entry.senderBatchId, batch_status: "SUCCESS" },
-          })),
-          ...(opts.orphanItems ?? []).map((o) => ({
-            batch_header: { payout_batch_id: o.batchId, sender_batch_id: o.senderBatchId, batch_status: "SUCCESS" },
-          })),
-        ];
-        return jsonResponse(200, { items: allBatches, total_items: allBatches.length });
+        throw new Error(`undocumented list endpoint must not be called: ${url}`);
       }
       const batchId = url.split("/").pop()!;
       const stored = batches.get(batchId);
       if (stored) {
         return jsonResponse(200, {
-          batch_header: { payout_batch_id: batchId, sender_batch_id: stored.senderBatchId, batch_status: "SUCCESS" },
+          batch_header: { payout_batch_id: batchId, sender_batch_header: { sender_batch_id: stored.senderBatchId }, batch_status: "SUCCESS" },
           items: [stored.item],
         });
       }
       const orphan = (opts.orphanItems ?? []).find((o) => o.batchId === batchId);
       if (orphan) {
         return jsonResponse(200, {
-          batch_header: { payout_batch_id: orphan.batchId, sender_batch_id: orphan.senderBatchId, batch_status: "SUCCESS" },
+          batch_header: { payout_batch_id: orphan.batchId, sender_batch_header: { sender_batch_id: orphan.senderBatchId }, batch_status: "SUCCESS" },
           items: [orphan.item],
         });
       }
@@ -116,6 +120,7 @@ function createStatefulPayPalMock(opts: {
   return {
     fetchFn,
     postCount: () => postBodies.length,
+    batchCount: () => batches.size,
     invoiceCount: () => invoiceCount,
     setFailPostAfterAccept: (value: boolean) => { opts.failPostAfterAccept = value; },
   };
@@ -343,7 +348,7 @@ test("provider item FAILED is not marked paid and projects a durable failed stat
 });
 
 test("concurrent /api/pay requests cannot double-submit the same job or breach the rolling cap", async () => {
-  const mock = createStatefulPayPalMock({ delayMs: 15 });
+  const mock = createStatefulPayPalMock({ delayMs: 50 });
   const app = createSettleServer({
     jobs: seedJobs("freelancer@example.com"),
     allowlistedEmails: new Set(["freelancer@example.com"]),
@@ -444,14 +449,14 @@ test("ambiguous /api/pay returns 202 OUTCOME_UNKNOWN, holds active cap reservati
     assert.deepEqual(retryBody.accepted, []);
     assert.equal(mock.postCount(), 1);
 
-    // Owner triggers durable provider reconciliation: recovers item by sender identity, clears reservation, marks job paid.
+    // Owner triggers durable provider reconciliation: recovers item by sender_batch_id duplicate link without creating a second batch, clears reservation, marks job paid.
     const recRes = await fetch(`${base}/api/financial/reconcile`, { method: "POST", headers: OWNER });
     assert.equal(recRes.status, 200);
     const recBody = (await recRes.json()) as { itemsRecorded: number; cap: { eligibleSpendCents: number; activeReservationsCents: number } };
     assert.equal(recBody.itemsRecorded, 1);
     assert.equal(recBody.cap.eligibleSpendCents, 100);
     assert.equal(recBody.cap.activeReservationsCents, 0);
-    assert.equal(mock.postCount(), 1);
+    assert.equal(mock.batchCount(), 1);
 
     const grid = (await (await fetch(`${base}/api/grid`)).json()) as { rows: Array<{ job_id: string; status: string }> };
     const statusById = new Map(grid.rows.map((r) => [r.job_id, r.status]));
@@ -533,10 +538,12 @@ test("provider orphan payout items surface in GET /api/financial/discrepancies w
         item: {
           payout_item_id: "ITEM-ORPHAN-1",
           transaction_id: "TX-ORPHAN-1",
-          sender_item_id: "unknown-external-item",
           transaction_status: "SUCCESS",
-          receiver: "stranger@example.com",
-          payout_item: { amount: { value: "99.00", currency: "USD" } },
+          payout_item: {
+            sender_item_id: "unknown-external-item",
+            receiver: "stranger@example.com",
+            amount: { value: "99.00", currency: "USD" },
+          },
           time_processed: new Date().toISOString(),
         },
       },
@@ -552,11 +559,19 @@ test("provider orphan payout items surface in GET /api/financial/discrepancies w
   const port = await app.listen(0);
   try {
     const base = `http://127.0.0.1:${port}`;
-    const rec = await fetch(`${base}/api/financial/reconcile`, { method: "POST", headers: OWNER });
+    const rec = await fetch(`${base}/api/financial/reconcile`, {
+      method: "POST",
+      headers: OWNER,
+      body: JSON.stringify({ batchIds: ["BATCH-ORPHAN-1"] }),
+    });
     assert.equal(rec.status, 200);
     // Repeating a read-only provider reconciliation must not duplicate an
     // unresolved discrepancy or invent eligible spend.
-    const recAgain = await fetch(`${base}/api/financial/reconcile`, { method: "POST", headers: OWNER });
+    const recAgain = await fetch(`${base}/api/financial/reconcile`, {
+      method: "POST",
+      headers: OWNER,
+      body: JSON.stringify({ batchIds: ["BATCH-ORPHAN-1"] }),
+    });
     assert.equal(recAgain.status, 200);
 
     const discRes = await fetch(`${base}/api/financial/discrepancies`, { headers: OWNER });

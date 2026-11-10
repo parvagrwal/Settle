@@ -30,8 +30,8 @@ const jobFields: AgFieldDefinition[] = [
   { id: "status_label", name: "Status", format: "textFormat" },
   { id: "reason", name: "Reason", format: "textFormat" },
   { id: "payout_batch_id", name: "Payout batch", format: "textFormat" },
-  { id: "fee_usd", name: "Fee est. (USD)", format: "currencyFormat" },
-  { id: "net_usd", name: "Net est. (USD)", format: "currencyFormat" },
+  { id: "fee_label", name: "PayPal fee", format: "textFormat" },
+  { id: "net_usd", name: "Recipient receives (USD)", format: "currencyFormat" },
 ];
 
 // Dashboard layout, built from the payout rows. One page, one grid widget
@@ -51,7 +51,7 @@ const initialState: AgReportState = {
               { id: "jobs.status_label" },
               { id: "jobs.reason" },
               { id: "jobs.payout_batch_id" },
-              { id: "jobs.fee_usd" },
+              { id: "jobs.fee_label" },
               { id: "jobs.net_usd" },
             ],
           },

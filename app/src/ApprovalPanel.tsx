@@ -5,7 +5,7 @@
 // failure. The fee estimate is shown before the batch is sent, computed
 // from PayPal's published rates. The fee is never claimed to be removed.
 import type { Caps, JobRow, DashboardRow } from "./api.ts";
-import { estimateFeeUsd, estimateNetUsd, usd, overCapCents } from "./fees.ts";
+import { usd, overCapCents } from "./fees.ts";
 import { statusLabel } from "./status.ts";
 
 interface ApprovalPanelProps {
@@ -36,7 +36,9 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
   const weeklyCap = caps?.rolling_cap_cents ?? caps?.weekly_cap_cents ?? 150000;
 
   const paidRows = rows.filter((row) => row.status === "paid");
-  const waitingRows = rows.filter((row) => row.status === "waiting" || row.status === "waiting_for_meera" || row.status === "blocked");
+  const waitingRows = rows.filter((row) =>
+    ["waiting", "waiting_for_meera", "processing", "unclaimed", "blocked"].includes(row.status),
+  );
   const fallbackPaidCents = paidRows.reduce((sum, row) => sum + row.amount_cents, 0);
   const eligibleSpendCents = caps?.eligibleSpendCents ?? fallbackPaidCents;
   const activeReservationsCents = caps?.activeReservationsCents ?? 0;
@@ -51,8 +53,8 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
   );
   const payableRows = rows.filter((row) => row.status === "waiting" && approvedIds.has(row.job_id));
   const payableTotalCents = payableRows.reduce((sum, row) => sum + row.amount_cents, 0);
-  const payableFeeUsd = payableRows.reduce((sum, row) => sum + estimateFeeUsd(row.amount_usd), 0);
-  const payableNetUsd = payableRows.reduce((sum, row) => sum + estimateNetUsd(row.amount_usd), 0);
+  const reportedFeeCents = paidRows.reduce((sum, row) => sum + (row.fee_cents ?? 0), 0);
+  const hasReportedFees = paidRows.some((row) => row.fee_cents !== null);
 
   return (
     <section className="panel" aria-label="Approval">
@@ -189,9 +191,10 @@ export default function ApprovalPanel(props: ApprovalPanelProps) {
         </div>
       )}
       <p className="panel-line">
-        About to pay: {usd(payableTotalCents)}. Estimated fees {`$${payableFeeUsd.toFixed(2)}`}, freelancers
-        receive about {`$${payableNetUsd.toFixed(2)}`}. Estimated from PayPal&apos;s published rates
-        (4.40% + $0.30 + about 3% currency conversion). The fee is not removed.
+        About to pay: {usd(payableTotalCents)} to freelancers. PayPal reports the actual
+        sender-side fee (<code>payout_item_fee</code>) on each payout item after submission;
+        recipients receive the full payout amount.
+        {hasReportedFees ? ` Reported PayPal fees on paid rows: ${usd(reportedFeeCents)}.` : ""}
       </p>
       {payError !== null && (
         <p className="error-text" role="alert">

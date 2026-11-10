@@ -59,8 +59,13 @@ export async function executeApprovedPlan(opts: {
       }
       return failed(payoutBatchId, `payment refused before submission for ${item.jobId}: ${detail}`, settledItems, items.length);
     }
-    payoutBatchId = result.item?.payoutBatchId as string ?? payoutBatchId;
+    payoutBatchId = result.item?.payoutBatchId ?? result.payoutBatchId ?? payoutBatchId;
     if (result.status === "provider_confirmed") settledItems++;
+    else if (result.status === "pending" || result.status === "onhold") {
+      const reason = `provider item ${result.status.toUpperCase()} in batch ${payoutBatchId ?? "unknown"}; reconcile or wait for webhook`;
+      opts.store.markExecutionOutcomeUnknown(execution.executionId, reason, at);
+      return { status: "outcome_unknown", planId: opts.planId, executionId: execution.executionId, payoutBatchId, reason, settledItems, totalItems: items.length };
+    }
   }
   if (settledItems === items.length) {
     opts.store.completeExecution(execution.executionId, payoutBatchId, at);

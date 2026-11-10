@@ -142,9 +142,8 @@ export default function App() {
       await reconcileFinancial();
       await refreshGrid();
       setReconcileNotice("Provider reconciliation complete. Durable cap, grid and paid status are refreshed.");
-      if (lastPay?.outcomeUnknown) {
-        // The ambiguous result is not payment proof. Remove it so the owner
-        // does not return to a stale "unknown" screen after recovery.
+      if (lastPay?.outcomeUnknown || lastPay?.batch_status === "PROCESSING") {
+        // The ambiguous or processing result is superseded by reconciliation.
         setLastPay(null);
         setView("dashboard");
       }
@@ -401,8 +400,8 @@ export default function App() {
           <footer>
             <p>
               Paid rows are real sandbox receipts from live test runs. Waiting rows are seeded demo
-              jobs for this run. Fees are estimates from PayPal&apos;s published rates, not the exact
-              fee. Sandbox only. Test money, no real money moves.
+              jobs for this run. Fees shown use PayPal&apos;s actual <code>payout_item_fee</code>{" "}
+              (sender-side fee). Sandbox only. Test money, no real money moves.
             </p>
             <p>
               <button type="button" className="button button-secondary" onClick={() => setView("landing")}>
@@ -451,7 +450,33 @@ export default function App() {
                 <p>
                   Batch: <strong>{lastPay.payout_batch_id ?? "none"}</strong> — status{" "}
                   <strong>{lastPay.batch_status ?? "none"}</strong>.
+                  {lastPay.actual_fee_cents !== null && lastPay.actual_fee_cents !== undefined ? (
+                    <>
+                      {" "}
+                      Actual PayPal fee (<code>payout_item_fee</code>):{" "}
+                      <strong>{usd(lastPay.actual_fee_cents)}</strong>.
+                    </>
+                  ) : null}
                 </p>
+                {lastPay.batch_status === "PROCESSING" && !lastPay.outcomeUnknown && (
+                  <div className="panel-line" role="status">
+                    <p>
+                      PayPal accepted this batch and it is still processing. Reconcile with PayPal
+                      or wait for the verified webhook to confirm final settlement.
+                    </p>
+                    <p>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={handleReconcile}
+                        disabled={paying || !ownerTokenSet}
+                      >
+                        {paying ? "Reconciling…" : "Reconcile with PayPal"}
+                      </button>
+                    </p>
+                    {reconcileError !== null && <p>Reconcile failed: {reconcileError}</p>}
+                  </div>
+                )}
                 <p>
                   Chosen by:{" "}
                   <strong>
@@ -496,6 +521,20 @@ export default function App() {
                     </li>
                   ))}
                 </ul>
+                {(lastPay.processing ?? []).length > 0 && (
+                  <>
+                    <h3>Processing at PayPal ({(lastPay.processing ?? []).length})</h3>
+                    <ul>
+                      {(lastPay.processing ?? []).map((item) => (
+                        <li key={item.job_id}>
+                          {item.job_id} — {statusLabel("processing")}
+                          {item.payout_batch_id ? ` — batch ${item.payout_batch_id}` : ""}
+                          {item.reason ? ` — ${item.reason}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
                 <h3>Held for a later run ({(lastPay.held ?? []).length})</h3>
                 {(lastPay.held ?? []).length === 0 && <p>Nothing was held for a later run.</p>}
                 <ul>

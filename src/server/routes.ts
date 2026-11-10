@@ -27,7 +27,7 @@ import { groqScenarioSelector } from "./groqScenarioSelector.ts";
 import { requireOwner } from "./ownerAuth.ts";
 import { executeApprovedPlan } from "./planExecution.ts";
 import { FinancialStore } from "./financialStore.ts";
-import { reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { paypalDecimalToMinorUnits, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
 import { createHash } from "node:crypto";
 import type { ProductStore } from "./productStore.ts";
 import { handleProductRoute } from "./productRoutes.ts";
@@ -36,6 +36,7 @@ export interface GridRow {
   job_id: string;
   freelancer_id: string;
   amount_cents: number;
+  fee_cents: number | null;
   due: string | null;
   priority: "high" | "normal" | "low" | null;
   status: string;
@@ -64,6 +65,7 @@ export function gridRows(jobs: Job[]): GridRow[] {
     job_id: job.job_id,
     freelancer_id: job.freelancer_id,
     amount_cents: job.amount_cents,
+    fee_cents: job.fee_cents ?? null,
     due: job.due ?? null,
     priority: job.priority ?? null,
     status: job.status,
@@ -198,15 +200,39 @@ export function createSettleServer(opts: {
         const item = financial.getPayoutItem(payment.paymentId);
         job.status = "paid";
         job.payout_batch_id = (item?.payoutBatchId as string | undefined) ?? job.payout_batch_id;
+        job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
+        job.paypal_transaction_id = item?.transactionId ?? job.paypal_transaction_id ?? null;
+        job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
         job.decision_reason = null;
+      } else if (payment.status === "pending" || payment.status === "onhold") {
+        const item = financial.getPayoutItem(payment.paymentId);
+        job.status = "processing";
+        job.payout_batch_id = item?.payoutBatchId ?? financial.getAttemptBatchId(payment.paymentId) ?? job.payout_batch_id;
+        job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
+        job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
+        job.decision_reason = `Provider item ${payment.status.toUpperCase()}: processing at PayPal — reconcile or wait for webhook`;
+      } else if (payment.status === "unclaimed") {
+        const item = financial.getPayoutItem(payment.paymentId);
+        job.status = "unclaimed";
+        job.payout_batch_id = item?.payoutBatchId ?? job.payout_batch_id;
+        job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
+        job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
+        job.decision_reason = "Provider item UNCLAIMED: waiting for recipient or reconcile";
       } else if (payment.status === "outcome_unknown" || payment.status === "submitted" || payment.status === "reserved") {
         job.status = "blocked";
         job.decision_reason = "OutcomeUnknown: reconcile provider state before retrying";
       } else if (payment.status === "failed") {
+        const item = financial.getPayoutItem(payment.paymentId);
         job.status = "failed";
+        job.payout_batch_id = item?.payoutBatchId ?? job.payout_batch_id;
+        job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
         job.decision_reason = "Provider item FAILED: no payment confirmed";
-      } else if (["pending", "unclaimed", "onhold", "blocked", "returned", "reversed", "refunded"].includes(payment.status)) {
+      } else if (["blocked", "returned", "reversed", "refunded"].includes(payment.status)) {
+        const item = financial.getPayoutItem(payment.paymentId);
         job.status = "blocked";
+        job.payout_batch_id = item?.payoutBatchId ?? job.payout_batch_id;
+        job.payout_item_id = item?.payoutItemId ?? job.payout_item_id;
+        job.fee_cents = item?.feeCents ?? job.fee_cents ?? null;
         job.decision_reason = `Provider item ${payment.status.toUpperCase()}: reconcile provider state before retrying`;
       } else if (payment.status === "approved" && job.status === "blocked") {
         job.status = "waiting";
@@ -215,9 +241,10 @@ export function createSettleServer(opts: {
     }
   };
   syncLegacyFromFinancial();
-  // Migrate already owner-approved jobs once; unpaid demos are authorization
-  // records, never provider payment evidence.
-  if (!opts.productStore) for (const job of store.jobs.filter((row) => row.approval_state === "approved" && row.status !== "paid" && row.amount_cents <= financial.getPolicy().perPaymentCapCents)) {
+  // Migrate already owner-approved jobs once regardless of whether the product
+  // workspace store is attached; unpaid demos are authorization records, never
+  // provider payment evidence.
+  for (const job of store.jobs.filter((row) => row.approval_state === "approved" && row.status !== "paid" && row.amount_cents <= financial.getPolicy().perPaymentCapCents)) {
     const id = recipientId(job.paypal_email);
     if (!financial.getRecipient(id)) financial.verifyRecipient({ recipientId: id, email: job.paypal_email, actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
     if (!financial.getPaymentByJob(job.job_id)) financial.approvePayment({ jobId: job.job_id, recipientId: id, amountCents: job.amount_cents, currency: "USD", actor: { actorId: "owner-migration", role: "owner" }, at: new Date().toISOString() });
@@ -282,7 +309,11 @@ export function createSettleServer(opts: {
         if (opts.baseUrl === undefined || opts.token === undefined) {
           sendJson(res, 503, { error: "reconcile is not configured: sandbox credentials are missing" }); return;
         }
-        const reconciled = await reconcilePayPal({ store: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
+        const body = await readJsonBody(req);
+        const batchIds = Array.isArray(body.batchIds)
+          ? body.batchIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+          : undefined;
+        const reconciled = await reconcilePayPal({ store: financial, baseUrl: opts.baseUrl, token: opts.token, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn, batchIds });
         syncLegacyFromFinancial();
         sendJson(res, 200, { ...reconciled, cap: financial.getCapSummary(new Date().toISOString()) }); return;
       }
@@ -341,6 +372,36 @@ export function createSettleServer(opts: {
         });
         if (!verified) { sendJson(res, 401, { error: "PayPal webhook signature verification failed" }); return; }
         const result = opts.transactionStore.processVerifiedEvent(event, new Date().toISOString(), transmission.id);
+        const eventType = String(event.event_type ?? "");
+        if (result.outcome === "applied" && (eventType.startsWith("PAYMENT.PAYOUTS-ITEM.") || eventType.startsWith("PAYOUTS.ITEM."))) {
+          try {
+            const resource = event.resource as Record<string, unknown> | undefined;
+            const payoutItem = resource?.payout_item as Record<string, unknown> | undefined;
+            const senderItemId = payoutItem?.sender_item_id ?? resource?.sender_item_id;
+            const payment = typeof senderItemId === "string" ? financial.getPaymentByIdempotency(senderItemId) : null;
+            const amountObj = (payoutItem?.amount ?? resource?.amount) as Record<string, unknown> | undefined;
+            const receiver = payoutItem?.receiver ?? resource?.receiver;
+            if (payment && resource && typeof receiver === "string" && typeof amountObj?.value === "string" && typeof amountObj?.currency === "string" && typeof resource.payout_item_id === "string" && typeof resource.transaction_status === "string") {
+              financial.recordPayoutItem({
+                paymentId: payment.paymentId,
+                senderBatchId: payment.idempotencyKey,
+                payoutBatchId: String(resource.payout_batch_id ?? financial.getAttemptBatchId(payment.paymentId) ?? ""),
+                payoutItemId: resource.payout_item_id,
+                transactionId: typeof resource.transaction_id === "string" ? resource.transaction_id : null,
+                activityId: typeof resource.activity_id === "string" ? resource.activity_id : null,
+                recipientEmail: receiver,
+                amountCents: paypalDecimalToMinorUnits(amountObj.value),
+                currency: amountObj.currency,
+                status: resource.transaction_status,
+                providerTimestamp: typeof resource.time_processed === "string" ? resource.time_processed : String(event.create_time),
+                raw: resource,
+              });
+              syncLegacyFromFinancial();
+            }
+          } catch {
+            // FinancialStore preserves any fact mismatch discrepancies independently.
+          }
+        }
         console.log(JSON.stringify({ type: "paypal_webhook_processed", eventId: event.id, correlationId: transmission.id, outcome: result.outcome, rowKey: result.rowKey }));
         sendJson(res, 200, { verification: "SUCCESS", outcome: result.outcome, duplicate: result.duplicate, rowKey: result.rowKey });
         return;
@@ -550,6 +611,8 @@ export function createSettleServer(opts: {
           }
         }
         let ambiguousExecution = false;
+        const processingJobs: Job[] = [];
+        const recordedProviderItems: Array<{ job_id: string; payout_batch_id: string | null; payout_item_id: string | null; transaction_id: string | null; fee_cents: number | null; status: string }> = [];
         const result: AgentLoopResult = await runAgentLoop({
           jobs: store.jobs,
           allowlistedEmails: store.allowlistedEmails,
@@ -574,13 +637,34 @@ export function createSettleServer(opts: {
                 const sub = await submitApprovedPayment({ store: financial, jobId: job.job_id, baseUrl: opts.baseUrl!, token: opts.token!, refreshToken: opts.refreshToken, fetchFn: opts.fetchFn });
                 providerItems.push(sub.item);
                 if (sub.batchStatus) providerBatches.push(sub.batchStatus);
+                const resolvedBatchId = sub.item?.payoutBatchId ?? sub.payoutBatchId ?? null;
+                job.payout_batch_id = resolvedBatchId;
+                job.payout_item_id = sub.item?.payoutItemId ?? null;
+                job.paypal_transaction_id = sub.item?.transactionId ?? null;
+                job.fee_cents = sub.item?.feeCents ?? null;
+                recordedProviderItems.push({
+                  job_id: job.job_id,
+                  payout_batch_id: resolvedBatchId,
+                  payout_item_id: job.payout_item_id,
+                  transaction_id: job.paypal_transaction_id ?? null,
+                  fee_cents: job.fee_cents ?? null,
+                  status: sub.item?.status ?? sub.status.toUpperCase(),
+                });
                 if (sub.status === "provider_confirmed") {
                   job.status = "paid";
-                  job.payout_batch_id = sub.item?.payoutBatchId as string;
+                  job.decision_reason = null;
                   accepted.push(job);
+                } else if (sub.status === "pending" || sub.status === "onhold") {
+                  job.status = "processing";
+                  job.decision_reason = `Provider item ${sub.status.toUpperCase()}: processing at PayPal — reconcile or wait for webhook`;
+                  processingJobs.push(job);
+                } else if (sub.status === "unclaimed") {
+                  job.status = "unclaimed";
+                  job.decision_reason = "Provider item UNCLAIMED: waiting for recipient or reconcile";
+                  rejected.push(job);
                 } else {
-                  job.status = "waiting";
-                  job.decision_reason = `provider item ${sub.item?.status ?? "UNKNOWN"}`;
+                  job.status = sub.status === "failed" ? "failed" : "blocked";
+                  job.decision_reason = `Provider item ${sub.item?.status ?? sub.status.toUpperCase()}: no payment confirmed`;
                   rejected.push(job);
                 }
               } catch (error) {
@@ -599,15 +683,13 @@ export function createSettleServer(opts: {
             const batchStatus = ambiguousExecution
               ? "OUTCOME_UNKNOWN"
               : accepted.length === 0
-                ? (rejected.length > 0 ? failedBatchStatus : null)
-                : rejected.length > 0
-                  ? "PARTIAL"
-                  : "SUCCESS";
+                ? (processingJobs.length > 0 ? "PROCESSING" : rejected.length > 0 ? failedBatchStatus : null)
+                : (rejected.length > 0 || processingJobs.length > 0 ? "PARTIAL" : "SUCCESS");
             return {
               accepted,
               rejected,
-              payoutBatchId: providerItems[0]?.payoutBatchId as string | undefined ?? null,
-              senderBatchId: providerItems[0]?.senderBatchId as string | undefined ?? null,
+              payoutBatchId: providerItems[0]?.payoutBatchId ?? processingJobs[0]?.payout_batch_id ?? null,
+              senderBatchId: providerItems[0]?.senderBatchId ?? null,
               batchStatus,
             };
           },
@@ -711,11 +793,21 @@ export function createSettleServer(opts: {
               ? "no jobs were paid, nothing to bill"
               : `batch was ${result.batchStatus}, nothing was paid to bill`;
         }
+        const reportedFees = recordedProviderItems.map((entry) => entry.fee_cents).filter((v): v is number => v !== null);
+        const actualFeeCents = reportedFees.length > 0 ? reportedFees.reduce((sum, fee) => sum + fee, 0) : null;
         sendJson(res, ambiguousExecution ? 202 : 200, {
           accepted: result.accepted.map((job) => job.job_id),
           rejected: result.rejected.map((r) => ({ job_id: r.proposalJobId, label: r.label, reason: r.reason })),
+          processing: processingJobs.map((job) => ({
+            job_id: job.job_id,
+            payout_batch_id: job.payout_batch_id,
+            payout_item_id: job.payout_item_id,
+            reason: job.decision_reason,
+          })),
           payout_batch_id: result.payoutBatchId,
           batch_status: result.batchStatus,
+          actual_fee_cents: actualFeeCents,
+          provider_items: recordedProviderItems,
           proposer: proposerSource,
           proposer_reason: proposerReason,
           held: modelHeld.map((h) => ({ job_id: h.jobId, reason: h.reason })),

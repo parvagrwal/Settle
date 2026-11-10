@@ -7,6 +7,8 @@ import { createSettleServer } from "../src/server/routes.ts";
 import { seedJobs } from "../src/server/seed.ts";
 import { ProductStore } from "../src/server/productStore.ts";
 import { FinancialStore } from "../src/server/financialStore.ts";
+import { TransactionStore } from "../src/server/transactionStore.ts";
+import { AllocationStore } from "../src/server/allocationStore.ts";
 
 process.env.SETTLE_OWNER_TOKEN = "product-api-owner-secret";
 const TOKEN = process.env.SETTLE_OWNER_TOKEN;
@@ -76,10 +78,10 @@ test("operational receipt progresses from unverified to provider-confirmed to in
       const input = JSON.parse(String(init.body)) as { sender_batch_header: { sender_batch_id: string }; items: Array<{ sender_item_id: string; receiver: string; amount: { value: string; currency: string } }> };
       const id = "PAYPAL-BATCH-FIXTURE-1";
       const item = input.items[0];
-      batches.set(id, { batch_header: { payout_batch_id: id, sender_batch_id: input.sender_batch_header.sender_batch_id, batch_status: "SUCCESS" }, items: [{ payout_item_id: "PAYPAL-ITEM-FIXTURE-1", transaction_id: "PAYPAL-TX-FIXTURE-1", activity_id: "PAYPAL-ACTIVITY-FIXTURE-1", sender_item_id: item.sender_item_id, transaction_status: "SUCCESS", receiver: item.receiver, payout_item: { amount: item.amount, payout_item_fee: { value: "0.25", currency: "USD" } }, time_processed: "2026-11-10T12:00:00Z" }] });
+      batches.set(id, { batch_header: { payout_batch_id: id, sender_batch_header: { sender_batch_id: input.sender_batch_header.sender_batch_id }, batch_status: "SUCCESS" }, items: [{ payout_item_id: "PAYPAL-ITEM-FIXTURE-1", transaction_id: "PAYPAL-TX-FIXTURE-1", activity_id: "PAYPAL-ACTIVITY-FIXTURE-1", payout_item_fee: { value: "0.25", currency: "USD" }, payout_batch_id: id, transaction_status: "SUCCESS", payout_item: { sender_item_id: item.sender_item_id, receiver: item.receiver, amount: item.amount }, time_processed: "2026-11-10T12:00:00Z" }] });
       return response(201, { batch_header: { payout_batch_id: id, batch_status: "PENDING" } });
     }
-    if (url.includes("?")) return response(200, { items: [...batches.values()].map((batch) => ({ batch_header: (batch.batch_header as Record<string, unknown>) })), total_items: batches.size });
+    if (url.includes("?")) throw new Error(`unexpected list query: ${url}`);
     const id = url.split("/").pop()!;
     return response(200, batches.get(id));
   }) as unknown as typeof fetch;
@@ -143,4 +145,94 @@ test("demo reset rejects anonymous callers and cannot invoke operational payment
     const reset = await fetch(`${base}/api/product/workspaces/demo/reset`, { method: "POST", headers: { cookie } });
     assert.equal(reset.status, 200);
   } finally { await app.close(); }
+});
+
+test("Fresh install with the real server wiring (product store plus PayPal credentials) pays pre-approved demo jobs", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "settle-server-wiring-")), "settle.db");
+  const transactionStore = new TransactionStore(path);
+  const allocationStore = new AllocationStore(path);
+  const financialStore = new FinancialStore(path);
+  const productStore = new ProductStore(path);
+  let seq = 0;
+  const batches = new Map<string, Record<string, unknown>>();
+  const fetchFn = (async (url: string, init: Record<string, unknown> = {}) => {
+    const method = String(init.method ?? "GET");
+    const response = (status: number, body: unknown) => ({ status, ok: status < 300, json: async () => body, headers: { get: () => null } });
+    if (url.includes("/v1/payments/payouts")) {
+      if (method === "POST") {
+        const input = JSON.parse(String(init.body)) as { sender_batch_header: { sender_batch_id: string }; items: Array<{ sender_item_id: string; receiver: string; amount: { value: string; currency: string } }> };
+        const id = `BATCH-WIRE-${++seq}`;
+        const src = input.items[0];
+        batches.set(id, {
+          batch_header: { payout_batch_id: id, sender_batch_header: { sender_batch_id: input.sender_batch_header.sender_batch_id }, batch_status: "SUCCESS" },
+          items: [{
+            payout_item_id: `ITEM-WIRE-${seq}`,
+            transaction_id: `TX-WIRE-${seq}`,
+            activity_id: `ACT-WIRE-${seq}`,
+            payout_item_fee: { value: "0.02", currency: "USD" },
+            payout_batch_id: id,
+            transaction_status: "SUCCESS",
+            payout_item: { sender_item_id: src.sender_item_id, receiver: src.receiver, amount: src.amount },
+            time_processed: new Date().toISOString(),
+          }],
+        });
+        return response(201, { batch_header: { payout_batch_id: id, batch_status: "PENDING" } });
+      }
+      assert.ok(!url.includes("?"), `must not call undocumented list endpoint: ${url}`);
+      const id = url.split("/").pop()!;
+      return response(200, batches.get(id));
+    }
+    throw new Error(`unexpected fetch ${method} ${url}`);
+  }) as unknown as typeof fetch;
+
+  const app = createSettleServer({
+    jobs: seedJobs("receiver@example.test"),
+    allowlistedEmails: new Set(["receiver@example.test"]),
+    baseUrl: "https://api-m.sandbox.paypal.com",
+    token: "fixture-token",
+    fetchFn,
+    transactionStore,
+    allocationStore,
+    financialStore,
+    productStore,
+  });
+  const port = await app.listen(0);
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    const pay = await fetch(`${base}/api/pay`, {
+      method: "POST",
+      headers: { "x-settle-owner-token": TOKEN!, "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedJobIds: ["demo-waiting-1", "demo-waiting-2"] }),
+    });
+    assert.equal(pay.status, 200);
+    const body = await pay.json() as {
+      accepted: string[];
+      rejected: unknown[];
+      actual_fee_cents: number | null;
+    };
+    assert.deepEqual(body.accepted, ["demo-waiting-1", "demo-waiting-2"]);
+    assert.deepEqual(body.rejected, []);
+    assert.equal(body.actual_fee_cents, 4);
+
+    const grid = await (await fetch(`${base}/api/grid`)).json() as { rows: Array<{ job_id: string; status: string; fee_cents: number | null; payout_batch_id: string | null }> };
+    const byId = new Map(grid.rows.map((r) => [r.job_id, r]));
+    assert.equal(byId.get("demo-waiting-1")?.status, "paid");
+    assert.equal(byId.get("demo-waiting-1")?.fee_cents, 2);
+    assert.equal(byId.get("demo-waiting-2")?.status, "paid");
+    assert.equal(byId.get("demo-waiting-2")?.fee_cents, 2);
+
+    const audit = await (await fetch(`${base}/api/audit`)).json() as { rows: Array<{ job_id: string; action: string; payout_batch_id: string | null; paypal_transaction_id: string | null }> };
+    const paidAudit = audit.rows.filter((r) => r.action === "paid");
+    assert.equal(paidAudit.length, 2);
+    assert.equal(paidAudit[0].payout_batch_id, "BATCH-WIRE-1");
+    assert.equal(paidAudit[0].paypal_transaction_id, "TX-WIRE-1");
+    assert.equal(paidAudit[1].payout_batch_id, "BATCH-WIRE-2");
+    assert.equal(paidAudit[1].paypal_transaction_id, "TX-WIRE-2");
+  } finally {
+    await app.close();
+    productStore.close();
+    financialStore.close();
+    allocationStore.close();
+    transactionStore.close();
+  }
 });

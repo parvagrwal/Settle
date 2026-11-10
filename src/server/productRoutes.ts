@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
 import { ProductPermissionError, ProductStore, type ProductUser, type VerificationState } from "./productStore.ts";
-import type { FinancialStore } from "./financialStore.ts";
+import { extractPayoutItemFeeCents, type FinancialStore } from "./financialStore.ts";
 import { verifyOwnerToken } from "./ownerAuth.ts";
 import { reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
 import type { FetchFn } from "./paypalClient.ts";
@@ -31,13 +31,7 @@ function sessionToken(req: IncomingMessage): string | null {
 function userFor(req: IncomingMessage, store: ProductStore): ProductUser | null { return store.getUserBySession(sessionToken(req)); }
 function recipientId(email: string): string { return `recipient-${createHash("sha256").update(email).digest("hex").slice(0, 24)}`; }
 function feeFromRaw(raw: unknown): number | null {
-  if (!raw || typeof raw !== "object") return null;
-  const item = (raw as Record<string, unknown>).payout_item;
-  if (!item || typeof item !== "object") return null;
-  const fee = (item as Record<string, unknown>).payout_item_fee;
-  if (!fee || typeof fee !== "object") return null;
-  const value = (fee as Record<string, unknown>).value;
-  return typeof value === "string" && /^\d+\.\d{2}$/.test(value) ? Math.round(Number(value) * 100) : null;
+  return extractPayoutItemFeeCents(raw);
 }
 
 export function productSnapshot(store: ProductStore, financial: FinancialStore, workspaceId: string, user: ProductUser | null, providerConfigured: boolean) {

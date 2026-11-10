@@ -7,6 +7,8 @@ export function statusLabel(status: string): string {
       return "Paid";
     case "waiting":
       return "Waiting";
+    case "processing":
+      return "Processing at PayPal";
     case "waiting_for_meera":
       return "Waiting for owner";
     case "blocked":

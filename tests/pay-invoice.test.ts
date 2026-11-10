@@ -85,10 +85,19 @@ function makePayPalMock(opts: { batchStatus?: string; invoiceFails?: boolean } =
     if (url.includes("/v1/payments/payouts")) {
       if (method === "POST") {
         const body = JSON.parse(String(init.body)); const source = body.items[0];
-        payoutItem = { payout_item_id: `ITEM-${source.sender_item_id}`, transaction_id: `TX-${source.sender_item_id}`, activity_id: `ACT-${source.sender_item_id}`, sender_item_id: source.sender_item_id, transaction_status: opts.batchStatus === "DENIED" ? "FAILED" : "SUCCESS", receiver: source.receiver, payout_item: { amount: source.amount }, time_processed: new Date().toISOString() };
+        payoutItem = {
+          payout_item_id: `ITEM-${source.sender_item_id}`,
+          transaction_id: `TX-${source.sender_item_id}`,
+          activity_id: `ACT-${source.sender_item_id}`,
+          payout_item_fee: { value: "0.02", currency: "USD" },
+          payout_batch_id: "BATCH-INV",
+          transaction_status: opts.batchStatus === "DENIED" ? "FAILED" : "SUCCESS",
+          payout_item: { sender_item_id: source.sender_item_id, receiver: source.receiver, amount: source.amount },
+          time_processed: new Date().toISOString(),
+        };
         return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-INV", batch_status: "PENDING" } });
       }
-      if (url.includes("?")) return mockResponse(200, { items: [], total_items: 0 });
+      if (url.includes("?")) throw new Error(`unexpected list query: ${url}`);
       return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-INV", batch_status: opts.batchStatus ?? "SUCCESS" }, items: payoutItem ? [payoutItem] : [] });
     }
     if (url.includes("/v2/invoicing/invoices")) {

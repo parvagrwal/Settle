@@ -96,13 +96,13 @@ export async function pollPayoutBatch(opts: {
   maxAttempts?: number;
   delayMs?: number;
 }): Promise<PayoutPollResult> {
-  const maxAttempts = opts.maxAttempts ?? 12;
+  const maxAttempts = opts.maxAttempts ?? 18;
   const delayMs = opts.delayMs ?? 5000;
   let last: PayoutPollResult | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const { json } = await paypalRequest({
       method: "GET",
-      path: `${opts.baseUrl}/v1/payments/payouts/${opts.payoutBatchId}`,
+      path: `${opts.baseUrl}/v1/payments/payouts/${encodeURIComponent(opts.payoutBatchId)}`,
       token: opts.token,
       refreshToken: opts.refreshToken,
       fetchFn: opts.fetchFn,
@@ -120,6 +120,40 @@ export async function pollPayoutBatch(opts: {
   }
   if (!last) throw new PayPalError(200, "PAYOUT_POLL_FAILED", "Payouts poll returned nothing");
   return last;
+}
+
+export async function getPayoutBatch(opts: {
+  baseUrl: string;
+  token: string;
+  payoutBatchId: string;
+  refreshToken?: () => Promise<string>;
+  fetchFn?: FetchFn;
+}): Promise<PayoutPollResult> {
+  return pollPayoutBatch({ ...opts, maxAttempts: 1, delayMs: 0 });
+}
+
+export function extractBatchIdFromDuplicateError(error: unknown): string | null {
+  if (!(error instanceof PayPalError)) return null;
+  const header = error.raw?.batch_header as Record<string, unknown> | undefined;
+  if (typeof header?.payout_batch_id === "string" && header.payout_batch_id.trim()) {
+    return header.payout_batch_id.trim();
+  }
+  const matchBatchUrl = (text: unknown): string | null => {
+    if (typeof text !== "string") return null;
+    const match = text.match(/\/v1\/payments\/payouts\/([A-Za-z0-9_-]+)/);
+    return match?.[1] ?? null;
+  };
+  for (const link of error.links) {
+    const id = matchBatchUrl(link.href);
+    if (id) return id;
+  }
+  if (Array.isArray(error.raw?.details)) {
+    for (const detail of error.raw.details as Array<Record<string, unknown>>) {
+      const id = matchBatchUrl(detail?.description) ?? matchBatchUrl(detail?.value);
+      if (id) return id;
+    }
+  }
+  return matchBatchUrl(error.message);
 }
 
 export async function getPayoutItem(opts: {

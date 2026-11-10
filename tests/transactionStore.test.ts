@@ -103,8 +103,30 @@ test("file database survives reopen and delta cursor returns only later changes"
 
 test("invalid event is rejected atomically without event or transaction rows", () => {
   const store = new TransactionStore(":memory:");
-  assert.throws(() => store.processVerifiedEvent({ id: "WH-BAD", event_type: "PAYOUTS.ITEM.SUCCESS" }, "2026-11-09T10:00:02Z"), /event/i);
+  assert.throws(() => store.processVerifiedEvent({ id: "WH-BAD", event_type: "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" }, "2026-11-09T10:00:02Z"), /event/i);
   assert.equal(store.currentSequence(), 0);
   assert.equal(store.listTransactions().length, 0);
+  store.close();
+});
+
+test("accepts real PayPal PAYMENT.PAYOUTS-ITEM.* webhook event names and top-level payout_item_fee", () => {
+  const store = new TransactionStore(":memory:");
+  const events = [
+    payoutItemEvent({ id: "WH-PEND", payoutItemId: "POI-A", eventType: "PAYMENT.PAYOUTS-ITEM.HELD", status: "ONHOLD", transactionId: null }),
+    payoutItemEvent({ id: "WH-SUCC", payoutItemId: "POI-A", createTime: "2026-11-09T10:01:00Z", eventType: "PAYMENT.PAYOUTS-ITEM.SUCCEEDED", status: "SUCCESS", fee: "0.02" }),
+    payoutItemEvent({ id: "WH-FAIL", payoutItemId: "POI-B", eventType: "PAYMENT.PAYOUTS-ITEM.FAILED", status: "FAILED", transactionId: null }),
+    payoutItemEvent({ id: "WH-UNCL", payoutItemId: "POI-C", eventType: "PAYMENT.PAYOUTS-ITEM.UNCLAIMED", status: "UNCLAIMED" }),
+    payoutItemEvent({ id: "WH-RET", payoutItemId: "POI-D", eventType: "PAYMENT.PAYOUTS-ITEM.RETURNED", status: "RETURNED" }),
+  ];
+  for (const ev of events) {
+    const res = store.processVerifiedEvent(ev, "2026-11-09T10:02:00Z");
+    assert.equal(res.outcome, "applied");
+  }
+  const byKey = new Map(store.listTransactions().map((row) => [row.rowKey, row]));
+  assert.equal(byKey.get("POI-A")?.status, "SUCCESS");
+  assert.equal(byKey.get("POI-A")?.feeCents, 2);
+  assert.equal(byKey.get("POI-B")?.status, "FAILED");
+  assert.equal(byKey.get("POI-C")?.status, "UNCLAIMED");
+  assert.equal(byKey.get("POI-D")?.status, "RETURNED");
   store.close();
 });

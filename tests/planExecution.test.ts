@@ -21,10 +21,21 @@ function setup() {
   return { store, financialStore, planId: plan.planId };
 }
 function response(json: Record<string, unknown>, status = 200) { return new Response(JSON.stringify(json), { status }); }
-function item(jobId: string, receiver: string, status: string) { return { payout_item_id: `ITEM-${jobId}`, transaction_id: `TX-${jobId}`, activity_id: `ACT-${jobId}`, sender_item_id: `settle-payment-${jobId}`, transaction_status: status, receiver, payout_item: { amount: { value: "50.00", currency: "USD" } }, time_processed: AT }; }
+function item(jobId: string, receiver: string, status: string) {
+  return {
+    payout_item_id: `ITEM-${jobId}`,
+    transaction_id: `TX-${jobId}`,
+    activity_id: `ACT-${jobId}`,
+    payout_item_fee: { value: "0.02", currency: "USD" },
+    payout_batch_id: `BATCH-${jobId}`,
+    transaction_status: status,
+    payout_item: { sender_item_id: `settle-payment-${jobId}`, receiver, amount: { value: "50.00", currency: "USD" } },
+    time_processed: AT,
+  };
+}
 function paypal(statuses: Record<string, string>) {
   return (async (url: string | URL | Request, init?: RequestInit) => {
-    if (String(url).includes("?")) return response({ items: [], total_items: 0 });
+    if (String(url).includes("?")) throw new Error(`unexpected list query: ${url}`);
     if (init?.method === "POST") {
       const body = JSON.parse(String(init.body)); const key = body.items[0].sender_item_id; const id = key.replace("settle-payment-", "");
       return response({ batch_header: { payout_batch_id: `BATCH-${id}`, batch_status: "PENDING" } }, 201);

@@ -22,6 +22,8 @@ interface SeedRow {
   currency: string;
   /** ISO date the work is due, when known. */
   due?: string;
+  /** Days relative to current clock for demo jobs so due dates stay future-relative. */
+  due_days_from_now?: number;
   /** How urgent the job is: high, normal, or low. */
   priority?: string;
   approval_state: string;
@@ -54,6 +56,7 @@ function loadSeedRows(): SeedRow[] {
       typeof item.status !== "string" ||
       typeof item.approved_days_ago !== "number" ||
       (item.due !== undefined && typeof item.due !== "string") ||
+      (item.due_days_from_now !== undefined && (typeof item.due_days_from_now !== "number" || !Number.isFinite(item.due_days_from_now))) ||
       (item.priority !== undefined &&
         item.priority !== "high" &&
         item.priority !== "normal" &&
@@ -72,7 +75,9 @@ export function seedJobs(receiverEmail: string, nowMs: number = Date.now()): Job
     paypal_email: receiverEmail,
     amount_cents: row.amount_cents,
     currency: "USD",
-    due: row.due ?? null,
+    due: row.due_days_from_now !== undefined
+      ? new Date(nowMs + row.due_days_from_now * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      : (row.due ?? null),
     priority: (row.priority ?? null) as Job["priority"],
     approval_state: row.approval_state as Job["approval_state"],
     approved_at:

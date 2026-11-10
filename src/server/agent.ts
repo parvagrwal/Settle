@@ -160,10 +160,12 @@ export async function runAgentLoop(opts: {
     if (decision.decision === "reject") {
       audit.write(rowFromDecision({ actor: "agent", jobId: job.job_id, amountCents: proposal.amountCents, decision }));
       job.decision_reason = `${decision.label}: ${decision.reason}`;
-      job.status =
-        decision.label === "WindowCapExceeded" || decision.label === "PerRequestCapExceeded"
-          ? "waiting_for_meera"
-          : "blocked";
+      if (decision.label !== "DuplicatePayout") {
+        job.status =
+          decision.label === "WindowCapExceeded" || decision.label === "PerRequestCapExceeded"
+            ? "waiting_for_meera"
+            : "blocked";
+      }
       rejected.push({
         job,
         proposalJobId: proposal.jobId,
@@ -232,14 +234,15 @@ export async function runAgentLoop(opts: {
   });
 
   for (const job of paid.accepted) {
+    const jobBatchId = job.payout_batch_id ?? paid.payoutBatchId;
     audit.write({
       actor: "agent",
       job_id: job.job_id,
       action: "paid",
-      reason: `paid in batch ${paid.payoutBatchId ?? "unknown"}, status ${paid.batchStatus ?? "unknown"}`,
+      reason: `paid in batch ${jobBatchId ?? "unknown"}, status ${paid.batchStatus ?? "unknown"}`,
       amount_cents: job.amount_cents,
-      payout_batch_id: paid.payoutBatchId,
-      paypal_transaction_id: null,
+      payout_batch_id: jobBatchId,
+      paypal_transaction_id: job.paypal_transaction_id ?? null,
     });
   }
 

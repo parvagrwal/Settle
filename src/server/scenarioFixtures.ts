@@ -1,8 +1,12 @@
 import type { AllocationContext } from "./allocation.ts";
 
+function relativeIso(base: Date, daysFromNow: number): string {
+  return new Date(base.getTime() + daysFromNow * 24 * 60 * 60 * 1000).toISOString();
+}
+
 /** Reproducible product scenario, not a customer record or available cash balance. */
-export function allocationDemoContext(): AllocationContext {
-  const captured = new Date();
+export function allocationDemoContext(now: Date = new Date()): AllocationContext {
+  const captured = new Date(now.getTime());
   return {
     contextId: "demo-studio-v1",
     capturedAt: captured.toISOString(),
@@ -13,9 +17,9 @@ export function allocationDemoContext(): AllocationContext {
     totalCapCents: 13000,
     committedCents: 0,
     obligations: [
-      { obligationId: "brand-refresh", recipient: "sandbox-designer@example.test", currency: "USD", owedCents: 8000, settledCents: 0, dueAt: "2026-11-10T12:00:00Z", mandatory: false, partialAllowed: true, priority: "normal", note: "Client delivery is complete; scheduling is discretionary." },
-      { obligationId: "studio-software", recipient: "sandbox-vendor@example.test", currency: "USD", owedCents: 9000, settledCents: 0, dueAt: "2026-11-12T12:00:00Z", mandatory: true, partialAllowed: false, priority: "operational", note: "Required to keep the studio operating." },
-      { obligationId: "urgent-retouch", recipient: "sandbox-artist@example.test", currency: "USD", owedCents: 5000, settledCents: 0, dueAt: "2026-11-11T12:00:00Z", mandatory: false, partialAllowed: false, priority: "urgent", note: "Owner marked urgent; no contract change." },
+      { obligationId: "brand-refresh", recipient: "sandbox-designer@example.test", currency: "USD", owedCents: 8000, settledCents: 0, dueAt: relativeIso(captured, 1), mandatory: false, partialAllowed: true, priority: "normal", note: "Client delivery is complete; scheduling is discretionary." },
+      { obligationId: "studio-software", recipient: "sandbox-vendor@example.test", currency: "USD", owedCents: 9000, settledCents: 0, dueAt: relativeIso(captured, 3), mandatory: true, partialAllowed: false, priority: "operational", note: "Required to keep the studio operating." },
+      { obligationId: "urgent-retouch", recipient: "sandbox-artist@example.test", currency: "USD", owedCents: 5000, settledCents: 0, dueAt: relativeIso(captured, 2), mandatory: false, partialAllowed: false, priority: "urgent", note: "Owner marked urgent; no contract change." },
     ],
   };
 }

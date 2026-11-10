@@ -42,7 +42,6 @@ export class ProductPermissionError extends Error {
 }
 
 const DEMO_ID = "demo";
-const DEMO_SOURCE_TIME = "2026-11-09T12:00:00.000Z";
 function text(value: unknown): string | null { return typeof value === "string" && value !== "" ? value : null; }
 function mapUser(row: Row): ProductUser { return { userId: String(row.user_id), displayName: String(row.display_name), email: text(row.email), authProvider: String(row.auth_provider) }; }
 function safeCents(value: number, name: string, allowZero = false): void {
@@ -145,16 +144,18 @@ export class ProductStore {
   }
   private ensureDemo(): void {
     if (this.db.prepare("SELECT 1 FROM product_workspaces WHERE workspace_id=?").get(DEMO_ID)) return;
-    this.tx(() => this.insertDemoRows(DEMO_SOURCE_TIME));
+    this.tx(() => this.insertDemoRows(new Date().toISOString()));
   }
   private insertDemoRows(at: string): void {
+    const baseMs = Date.parse(at);
+    const relativeDue = (days: number) => new Date((Number.isFinite(baseMs) ? baseMs : Date.now()) + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     this.db.prepare("INSERT INTO product_workspaces VALUES(?,?,?,?,?,?,?)").run(DEMO_ID, "Northstar Studio — illustrative", "demo", null, "none", at, at);
     this.db.prepare("INSERT INTO product_workspace_policies VALUES(?,?,?,?,?,?,?)").run(DEMO_ID, 20000, 150000, 168, 7, "demonstration fixture", at);
     const jobs = [
-      ["demo-retouch", "Rush retouching", "Asha — sample recipient", "asha@example.test", 8000, "2026-11-12", "high", "approved"],
-      ["demo-brand", "Brand identity handoff", "Ravi — sample recipient", "ravi@example.test", 12000, "2026-11-14", "normal", "approved"],
-      ["demo-license", "Studio font license", "Type vendor — sample recipient", "vendor@example.test", 25000, "2026-11-13", "normal", "approved"],
-      ["demo-approval", "Social launch assets", "Maya — sample recipient", "maya@example.test", 6000, "2026-11-15", "normal", "not_approved"],
+      ["demo-retouch", "Rush retouching", "Asha — sample recipient", "asha@example.test", 8000, relativeDue(2), "high", "approved"],
+      ["demo-brand", "Brand identity handoff", "Ravi — sample recipient", "ravi@example.test", 12000, relativeDue(4), "normal", "approved"],
+      ["demo-license", "Studio font license", "Type vendor — sample recipient", "vendor@example.test", 25000, relativeDue(3), "normal", "approved"],
+      ["demo-approval", "Social launch assets", "Maya — sample recipient", "maya@example.test", 6000, relativeDue(5), "normal", "not_approved"],
     ];
     for (const [id, title, recipient, email, amount, due, priority, approval] of jobs) {
       this.db.prepare(`INSERT INTO product_jobs(job_id,workspace_id,title,recipient_name,recipient_email,amount_cents,currency,due_at,priority,approval_state,approved_by,approved_at,origin,provider_environment,source_timestamp,ingested_at,created_at,updated_at)
@@ -164,7 +165,7 @@ export class ProductStore {
     this.db.prepare(`INSERT INTO product_receipts(receipt_id,workspace_id,job_id,payment_id,title,recipient_name,recipient_email,amount_cents,currency,origin,provider_environment,verification_state,approved_by,approved_at,policy_version,submitted_at,payout_batch_id,payout_item_id,transaction_id,provider_status,fee_cents,provider_timestamp,ingested_at,last_reconciled_at,reconciliation_run_id,raw_json)
       VALUES(?,?,?,NULL,?,?,?,?,'USD','seed','sandbox','historical_evidence_only',?,?,NULL,NULL,?,NULL,NULL,'SUCCESS',NULL,NULL,?,NULL,NULL,NULL)`)
       .run("demo-historical-receipt", DEMO_ID, null, "Historical agent-loop payout", "freelancer-1 — seeded recipient", null, 100,
-        "repository seed", "2026-11-07T12:00:00.000Z", "RBZ4V8LCSSK5W", DEMO_SOURCE_TIME);
+        "repository seed", "2026-11-07T12:00:00.000Z", "RBZ4V8LCSSK5W", at);
     this.createRecommendation(DEMO_ID, null, at);
     this.audit(DEMO_ID, "demonstration fixture", "demo_seeded", DEMO_ID, "Synthetic jobs and one repository-seeded historical Sandbox reference; no operational payment created.", at);
   }

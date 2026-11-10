@@ -111,6 +111,7 @@ function makeMock(opts: { groqHandler?: GroqHandler; batchStatus?: string } = {}
   const calls: Array<{ url: string; init: Record<string, unknown> }> = [];
   const groqBodies: Array<Record<string, unknown>> = [];
   let invoiceGetCount = 0;
+  let batchSeq = 0;
   const payoutItems = new Map<string, Record<string, unknown>>();
   const fetchFn = (async (url: string, init: Record<string, unknown>) => {
     calls.push({ url, init });
@@ -125,11 +126,20 @@ function makeMock(opts: { groqHandler?: GroqHandler; batchStatus?: string } = {}
     if (url.includes("/v1/payments/payouts")) {
       if (method === "POST") {
         const body = JSON.parse(String(init.body)); const source = body.items[0]; const id = source.sender_item_id.replace("settle-payment-", "");
-        const batchId = "BATCH-ALLOC";
-        payoutItems.set(batchId, { payout_item_id: `ITEM-${id}`, transaction_id: `TX-${id}`, activity_id: `ACT-${id}`, sender_item_id: source.sender_item_id, transaction_status: opts.batchStatus === "DENIED" ? "FAILED" : "SUCCESS", receiver: source.receiver, payout_item: { amount: source.amount }, time_processed: new Date().toISOString() });
+        const batchId = `BATCH-ALLOC-${++batchSeq}`;
+        payoutItems.set(batchId, {
+          payout_item_id: `ITEM-${id}`,
+          transaction_id: `TX-${id}`,
+          activity_id: `ACT-${id}`,
+          payout_item_fee: { value: "0.02", currency: "USD" },
+          payout_batch_id: batchId,
+          transaction_status: opts.batchStatus === "DENIED" ? "FAILED" : "SUCCESS",
+          payout_item: { sender_item_id: source.sender_item_id, receiver: source.receiver, amount: source.amount },
+          time_processed: new Date().toISOString(),
+        });
         return mockResponse(201, { batch_header: { payout_batch_id: batchId, batch_status: "PENDING" } });
       }
-      if (url.includes("?")) return mockResponse(200, { items: [], total_items: 0 });
+      if (url.includes("?")) throw new Error(`unexpected list query: ${url}`);
       const batchId = url.split("/").pop()!;
       return mockResponse(200, { batch_header: { payout_batch_id: batchId, batch_status: opts.batchStatus ?? "SUCCESS" }, items: [payoutItems.get(batchId)] });
     }
@@ -523,7 +533,8 @@ test("model never receives the over-cap job as a candidate", async () => {
     assert.doesNotMatch(user, /demo-over-cap/);
     // The jobs sent carry due and priority, and the run budget.
     assert.match(user, /Run budget for this run: 200 cents/);
-    assert.match(user, /"due": "2026-11-12"/);
+    const expectedDue = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    assert.match(user, new RegExp(`"due": "${expectedDue}"`));
     assert.match(user, /"priority": "high"/);
   } finally {
     await app.close();

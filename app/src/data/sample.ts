@@ -16,8 +16,10 @@ export const sampleRows: DashboardRow[] = [
     status_label: "Paid",
     reason: null,
     payout_batch_id: "SAMPLE-1",
-    fee_usd: 0.37,
-    net_usd: 0.63,
+    fee_cents: 2,
+    fee_usd: 0.02,
+    fee_label: "$0.02",
+    net_usd: 1.0,
   },
   {
     job_id: "sample-job-2",
@@ -30,8 +32,10 @@ export const sampleRows: DashboardRow[] = [
     status_label: "Waiting",
     reason: null,
     payout_batch_id: null,
-    fee_usd: 0.37,
-    net_usd: 0.63,
+    fee_cents: null,
+    fee_usd: null,
+    fee_label: "Not reported",
+    net_usd: 1.0,
   },
 ];
 

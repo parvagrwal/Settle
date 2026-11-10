@@ -1,18 +1,9 @@
-// Fee estimator — PayPal's published cross-border rates for India:
-// 4.40% of the amount, plus $0.30 per payment, plus about 3% currency
-// conversion. About $74.30 lost per $1,000 sent. This is an estimate from
-// the published rates, not the exact fee, and it never claims the fee is
-// removed. Amounts are in dollars here; the server keeps integer cents.
-export const FEE_PERCENT = 0.044;
-export const FX_PERCENT = 0.03;
-export const FEE_FIXED_USD = 0.3;
-
-export function estimateFeeUsd(amountUsd: number): number {
-  return amountUsd * FEE_PERCENT + FEE_FIXED_USD + amountUsd * FX_PERCENT;
-}
-
-export function estimateNetUsd(amountUsd: number): number {
-  return amountUsd - estimateFeeUsd(amountUsd);
+// Money and PayPal fee helpers — amounts stay in integer cents on the
+// server, and actual PayPal fees come directly from PayPal's reported
+// `payout_item_fee` (sender-side fee in Payouts) rather than guessed
+// cross-border card/checkout percentages.
+export function actualFeeUsd(feeCents: number | null | undefined): number | null {
+  return typeof feeCents === "number" && Number.isFinite(feeCents) ? feeCents / 100 : null;
 }
 
 export function centsToUsd(cents: number): number {
@@ -22,6 +13,10 @@ export function centsToUsd(cents: number): number {
 /** "$1.00" from 100 cents. Always two decimals, so amounts line up. */
 export function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+export function usdOrUnreported(cents: number | null | undefined): string {
+  return typeof cents === "number" && Number.isFinite(cents) ? usd(cents) : "Not reported";
 }
 
 /** How far an amount sits over a cap, in cents. Zero when it fits. */

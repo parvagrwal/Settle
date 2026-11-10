@@ -298,8 +298,20 @@ test("routes: owner approves a new email once, pay holds for the owner, then Pay
     if (method === "POST") {
       return mockResponse(201, { batch_header: { payout_batch_id: "BATCH-7", batch_status: "PENDING" } });
     }
-    if (String(url).includes("?")) return mockResponse(200, { items: [], total_items: 0 });
-    return mockResponse(200, { batch_header: { payout_batch_id: "BATCH-7", batch_status: "SUCCESS" }, items: [{ payout_item_id: "ITEM-7", transaction_id: "TX-7", activity_id: "ACT-7", payout_batch_id: "BATCH-7", sender_item_id: "settle-payment-job-1", transaction_status: "SUCCESS", receiver: "freelancer@example.com", payout_item: { amount: { value: "100.00", currency: "USD" } }, time_processed: new Date().toISOString() }] });
+    if (String(url).includes("?")) throw new Error(`unexpected list query: ${url}`);
+    return mockResponse(200, {
+      batch_header: { payout_batch_id: "BATCH-7", batch_status: "SUCCESS" },
+      items: [{
+        payout_item_id: "ITEM-7",
+        transaction_id: "TX-7",
+        activity_id: "ACT-7",
+        payout_item_fee: { value: "0.02", currency: "USD" },
+        payout_batch_id: "BATCH-7",
+        transaction_status: "SUCCESS",
+        payout_item: { sender_item_id: "settle-payment-job-1", receiver: "freelancer@example.com", amount: { value: "100.00", currency: "USD" } },
+        time_processed: new Date().toISOString(),
+      }],
+    });
   }) as unknown as typeof fetch;
   const job = makeJob({ approval_state: "not_approved", approved_at: null });
   const app = createSettleServer({

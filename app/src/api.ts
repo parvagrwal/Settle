@@ -1,11 +1,13 @@
 // API client — the browser talks only to this server, never to PayPal.
 // No PayPal secret reaches the browser: the browser only sees jobs,
 // grid rows, and audit rows. Every call returns plain JSON from /api/*.
+import { actualFeeUsd, usdOrUnreported } from "./fees.ts";
 import { statusLabel } from "./status.ts";
 export interface GridRow {
   job_id: string;
   freelancer_id: string;
   amount_cents: number;
+  fee_cents?: number | null;
   due: string | null;
   priority: "high" | "normal" | "low" | null;
   status: string;
@@ -61,8 +63,11 @@ export interface Caps {
 export interface PayResult {
   accepted: string[];
   rejected: Array<{ job_id: string; label: string; reason: string }>;
+  processing?: Array<{ job_id: string; payout_batch_id: string | null; payout_item_id: string | null; reason: string | null }>;
   payout_batch_id: string | null;
   batch_status: string | null;
+  actual_fee_cents?: number | null;
+  provider_items?: Array<{ job_id: string; payout_batch_id: string | null; payout_item_id: string | null; transaction_id: string | null; fee_cents: number | null; status: string }>;
   proposer: string;
   proposer_reason: string | null;
   /** Jobs the model held for a later run, with reasons. */
@@ -103,13 +108,16 @@ export interface DashboardRow {
   status_label: string;
   reason: string | null;
   payout_batch_id: string | null;
-  fee_usd: number;
+  fee_cents: number | null;
+  fee_usd: number | null;
+  fee_label: string;
   net_usd: number;
 }
 
 export function toDashboardRow(row: GridRow): DashboardRow {
   const amountUsd = row.amount_cents / 100;
-  const feeUsd = estimateFeeUsd(amountUsd);
+  const feeCents = row.fee_cents ?? null;
+  const feeUsd = actualFeeUsd(feeCents);
   return {
     job_id: row.job_id,
     freelancer: row.freelancer_id,
@@ -121,17 +129,11 @@ export function toDashboardRow(row: GridRow): DashboardRow {
     status_label: statusLabel(row.status),
     reason: row.reason,
     payout_batch_id: row.payout_batch_id,
+    fee_cents: feeCents,
     fee_usd: feeUsd,
-    net_usd: amountUsd - feeUsd,
+    fee_label: usdOrUnreported(feeCents),
+    net_usd: amountUsd,
   };
-}
-
-// Fee estimate, from PayPal's published cross-border rates: 4.40% of the
-// amount, plus $0.30 per payment, plus about 3% currency conversion.
-// About $74.30 lost per $1,000 sent. An estimate, not the exact fee,
-// and it never claims the fee is removed.
-export function estimateFeeUsd(amountUsd: number): number {
-  return amountUsd * 0.044 + 0.3 + amountUsd * 0.03;
 }
 
 async function getJson<T>(path: string): Promise<T> {

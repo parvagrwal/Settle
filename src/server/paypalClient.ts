@@ -10,11 +10,21 @@ export class PayPalError extends Error {
   status: number;
   paypalName: string;
   debugId: string | null;
-  constructor(status: number, paypalName: string, message: string, debugId: string | null = null) {
+  links: Array<Record<string, unknown>>;
+  raw: Record<string, unknown> | null;
+  constructor(
+    status: number,
+    paypalName: string,
+    message: string,
+    debugId: string | null = null,
+    raw: Record<string, unknown> | null = null,
+  ) {
     super(message);
     this.status = status;
     this.paypalName = paypalName;
     this.debugId = debugId;
+    this.raw = raw;
+    this.links = Array.isArray(raw?.links) ? (raw.links as Array<Record<string, unknown>>) : [];
   }
 }
 
@@ -83,7 +93,7 @@ export async function paypalRequest(opts: PayPalRequestOptions): Promise<PayPalR
     const name = typeof json.name === "string" ? json.name : "PAYPAL_ERROR";
     const message = typeof json.message === "string" ? json.message : `PayPal request failed, HTTP ${res.status}`;
     const debugId = typeof json.debug_id === "string" ? json.debug_id : null;
-    throw new PayPalError(res.status, name, message, debugId);
+    throw new PayPalError(res.status, name, message, debugId, json);
   }
   throw new PayPalError(429, "RETRY_EXHAUSTED", "PayPal request failed after retries");
 }

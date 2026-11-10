@@ -12,6 +12,7 @@ import type { FetchFn } from "./paypalClient.ts";
 export type JobStatus =
   | "waiting"
   | "paid"
+  | "processing"
   | "waiting_for_meera"
   | "blocked"
   | "unclaimed"
@@ -32,6 +33,8 @@ export interface Job {
   status: JobStatus;
   payout_batch_id: string | null;
   payout_item_id: string | null;
+  paypal_transaction_id?: string | null;
+  fee_cents?: number | null;
   decision_reason: string | null;
 }
 
@@ -88,11 +91,14 @@ export async function payApprovedJobs(opts: {
     );
     if (decision.decision === "reject") {
       job.decision_reason = `${decision.label}: ${decision.reason}`;
-      // Over-cap waits for Meera. Every other rejection blocks the job.
-      job.status =
-        decision.label === "WindowCapExceeded" || decision.label === "PerRequestCapExceeded"
-          ? "waiting_for_meera"
-          : "blocked";
+      // Over-cap waits for Meera. Every other new rejection blocks the job,
+      // while DuplicatePayout preserves the already-paid status on the grid.
+      if (decision.label !== "DuplicatePayout") {
+        job.status =
+          decision.label === "WindowCapExceeded" || decision.label === "PerRequestCapExceeded"
+            ? "waiting_for_meera"
+            : "blocked";
+      }
       rejected.push(job);
       continue;
     }
