@@ -7,7 +7,7 @@ This README describes **what the code does now**, how to check each claim, and
 what is still unproven. Every number quoted below was produced by a command that
 is printed next to it.
 
-- `npm test` → **260 tests, 260 pass, 0 fail**
+- `npm test` → **332 tests, 332 pass, 0 fail**
 - `npm --prefix app run build` → production bundle builds
 - One checked-in PayPal artifact: `evidence/payouts-first-test/` (batch
   `YFBPVYJBHM9GU`, 2026-11-06, two items, `payout_item_fee` 0.02 + 0.02 = 0.04)
@@ -137,7 +137,7 @@ The tests that pin these behaviours:
 | Accepted-not-settled, retry, replay, refusal, stop | `tests/asyncConfirmation.test.ts` | 9 |
 | Seed refusal, report semantics, execution runs, partial runs, stop, unknown fee | `tests/financialReport.test.ts` | 8 |
 | Workspace run, reject, stop durability, failed item | `tests/productExecution.test.ts` | 6 |
-| Existing behaviour, restated against the new contracts | `tests/financialPayments.test.ts`, `tests/financialHttpAdversarial.test.ts`, `tests/pay-invoice.test.ts`, `tests/productApi.test.ts`, `tests/server.test.ts`, `tests/paypalShapeFixes.test.ts` | rest of 260 |
+| Existing behaviour, restated against the new contracts | `tests/financialPayments.test.ts`, `tests/financialHttpAdversarial.test.ts`, `tests/pay-invoice.test.ts`, `tests/productApi.test.ts`, `tests/server.test.ts`, `tests/paypalShapeFixes.test.ts` | rest of 332 |
 
 ## 4. The payment state machine
 
