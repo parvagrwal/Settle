@@ -1,0 +1,43 @@
+# Render Blueprint for Settle. Free tier, $0.
+# Deploy: dashboard.render.com -> New -> Blueprint -> connect the Settle repo.
+# Render reads this file and asks for the sync:false values below; fill them
+# from local .env (never commit .env, never paste a secret in a message).
+# Free instances spin down after 15 minutes idle; the first load after that
+# takes about a minute to wake. The SQLite file lives on the free tier's
+# ephemeral disk, so it resets on restart or redeploy and the demo re-seeds
+# fresh. That is expected on the free tier, not a bug.
+services:
+  - type: web
+    name: settle
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm --prefix app ci && npm --prefix app run build
+    startCommand: npm start
+    envVars:
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: SETTLE_TRUST_PROXY
+        value: "1"
+      - key: SETTLE_HSTS
+        value: "1"
+      - key: SETTLE_SECURE_COOKIES
+        value: "1"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_SANDBOX_RECEIVER_EMAIL
+        sync: false
+      - key: PAYPAL_SANDBOX_CLIENT_EMAIL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SETTLE_OWNER_TOKEN
+        sync: false
+      - key: SETTLE_OWNER_NAME
+        sync: false
+      - key: SETTLE_OWNER_EMAIL
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
