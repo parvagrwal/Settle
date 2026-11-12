@@ -6,7 +6,7 @@ test('reachable product views: automated accessibility smoke', async ({ page }) 
   await mockApi(page, transactions(6));
   await page.route('**/api/allocation/demo-context', route => route.fulfill({ json: { contextId: 'FIXTURE', capturedAt: '2026-01-01', clearedFundsCents: 0, reserveCents: 0, committedCents: 0, obligations: [], source: 'TEST FIXTURE — NOT LIVE' } }));
   await page.route('**/api/product/session', route => route.fulfill({ json: { authenticated: false, workspaces: [] } }));
-  await page.goto('/');
+  await page.goto('/legacy');
   for (const name of ['Verified transactions', 'Allocation agent', 'Operational workspace', 'Legacy payout workflow']) {
     await page.getByRole('navigation', { name: 'Product views' }).getByRole('button', { name }).click();
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
@@ -18,7 +18,7 @@ test('navigation works with keyboard and honors reduced motion', async ({ page }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mockApi(page, transactions(2));
   await page.route('**/api/allocation/demo-context', route => route.fulfill({ json: { contextId: 'FIXTURE', capturedAt: '2026-01-01', clearedFundsCents: 0, reserveCents: 0, committedCents: 0, obligations: [], source: 'TEST FIXTURE — NOT LIVE' } }));
-  await page.goto('/');
+  await page.goto('/legacy');
   // Wait until React and the grid have mounted before sending the first key.
   await expect(page.getByRole('gridcell', { name: 'TEST-POI-1' }).first()).toBeVisible();
   await page.keyboard.press('Tab');

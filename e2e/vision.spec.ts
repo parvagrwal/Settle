@@ -4,7 +4,7 @@ import { mockApi, transactions } from './support/fixtures.ts';
 test('payment status labels remain present in color-vision simulations', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockApi(page, transactions(6));
-  await page.goto('/');
+  await page.goto('/legacy');
   await expect(page.getByRole('gridcell', { name: 'TEST-POI-1' }).first()).toBeVisible();
   const session = await page.context().newCDPSession(page);
   for (const type of ['protanopia', 'deuteranopia', 'tritanopia'] as const) {

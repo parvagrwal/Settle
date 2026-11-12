@@ -5,7 +5,7 @@ for (const size of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tabl
   test(`allocation alternatives and decision status: ${size.name}`, async ({ page }) => {
     await page.setViewportSize(size);
     await page.addInitScript(() => sessionStorage.setItem('settle-owner-token', 'e2e-owner-token'));
-    await page.goto('/');
+    await page.goto('/legacy');
     await page.getByRole('navigation', { name: 'Product views' }).getByRole('button', { name: 'Allocation agent' }).click();
     await page.getByRole('button', { name: 'Evaluate current scenario' }).click();
     await expect(page.getByText('NO PAYMENT AUTHORIZED')).toBeVisible();

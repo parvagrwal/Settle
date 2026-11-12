@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 40" role="img" aria-label="Settle">
+  <title>Settle</title>
+  <g transform="translate(2 4)">
+    <path d="M4 13.2 16 4l12 9.2" fill="none" stroke="#241E2B" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4 21.6 16 12.4l12 9.2" fill="none" stroke="#B5C0CF" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="44" y="28" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="26" font-weight="700" letter-spacing="-0.6" textLength="148" lengthAdjust="spacingAndGlyphs" fill="#241E2B">Settle</text>
+</svg>

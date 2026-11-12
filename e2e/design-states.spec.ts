@@ -7,7 +7,7 @@ for (const size of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tabl
     await page.setViewportSize(size);
     await mockApi(page, [transaction]);
     await page.route('**/api/investigate', route => route.fulfill({ status: 500, json: { error: 'TEST FIXTURE: investigation unavailable' } }));
-    await page.goto('/');
+    await page.goto('/legacy');
     await expect(page.getByRole('gridcell', { name: 'TEST-POI-1' }).first()).toBeVisible();
     await page.locator("[aria-label='Verified transaction operations'] [row-id='TEST-POI-1'] input[type='checkbox']").first().check();
     await page.getByRole('button', { name: 'Open selected' }).click();
@@ -26,7 +26,7 @@ for (const size of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tabl
   test(`empty verified transaction state: ${size.name}`, async ({ page }) => {
     await page.setViewportSize(size);
     await mockApi(page, []);
-    await page.goto('/');
+    await page.goto('/legacy');
     await expect(page.getByText(/No verified rows is a truthful empty state/)).toBeVisible();
     await page.screenshot({ path: `evidence/design-system/${size.name}-empty-transactions.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -3,7 +3,7 @@ import { mockApi } from './support/fixtures.ts';
 
 test('published spacing tokens drive the shell and navigation', async ({ page }) => {
   await mockApi(page, []);
-  await page.goto('/');
+  await page.goto('/legacy');
   const shell = page.locator('.page');
   const nav = page.getByRole('navigation', { name: 'Product views' });
   await expect(shell).toHaveCSS('padding-top', '32px');

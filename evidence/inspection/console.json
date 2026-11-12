@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "console",
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "kind": "console",
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "kind": "console",
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "kind": "console",
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "kind": "console",
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "kind": "console",
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  }
+]

@@ -1,6 +1,6 @@
 // Development-only review harness. It is not linked from the product or included
 // in the production build. All data and APIs here are local, read-only fixtures.
-import './ag/setup.ts';
+import { ensureAgModules } from './ag/setup.ts';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AgWidgetParams } from 'ag-studio';
@@ -56,4 +56,8 @@ function Showcase() {
   </main>;
 }
 
-createRoot(document.getElementById('root')!).render(<Showcase />);
+// The grid, chart and studio libraries are registered on demand, so the review
+// harness waits for that registration before it renders the first grid.
+void ensureAgModules().then(() => {
+  createRoot(document.getElementById('root')!).render(<Showcase />);
+});

@@ -28,7 +28,7 @@ test("labeled fixture exercises inspection, evidence filtering and persisted del
   });
   await page.route("**/api/transactions/TEST-POI-1/history", (route) => route.fulfill({ json: { transaction, events: [{ sequence: 1, eventId: "TEST-WH-1", eventType: "PAYMENT.PAYOUTS-ITEM.HELD", eventCreatedAt: transaction.eventCreatedAt, receivedAt: transaction.eventReceivedAt, transmissionId: "TEST-TRANSMISSION", outcome: "applied", resource: {} }] } }));
   await page.route("**/api/investigate", (route) => route.fulfill({ json: { question: "Which payments require investigation?", answer: "TEST-POI-1 is ONHOLD. Fixture response.", facts: [{ label: "Requires attention", value: "1", evidence: ["TEST-POI-1"] }], hypotheses: [], supportingTransactionIds: ["TEST-POI-1"], gridFilter: { transactionIds: ["TEST-POI-1"] }, generatedAt: new Date().toISOString(), source: "Automated fixture" } }));
-  await page.goto("/");
+  await page.goto("/legacy");
   await expect(page.getByText("Every status has a receipt.")).toBeVisible();
   await expect(page.getByRole("gridcell", { name: "TEST-POI-1" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
@@ -46,7 +46,7 @@ test("labeled fixture exercises inspection, evidence filtering and persisted del
 test("AG Studio mounts native chart/grid and serializes report state", async ({ page }) => {
   await mockApplication(page);
   await page.route("**/api/transactions?since=*", (route) => route.fulfill({ json: { transactions: [transaction], cursor: 1, serverTime: new Date().toISOString(), source: "AUTOMATED TEST FIXTURE — NOT PAYPAL" } }));
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByRole("tab", { name: "AG Studio analytics" }).click();
   await expect(page.getByText("From pattern to payment population")).toBeVisible();
   await expect(page.locator(".transaction-studio canvas").first()).toBeVisible({ timeout: 20_000 });
@@ -58,7 +58,7 @@ test("AG Studio mounts native chart/grid and serializes report state", async ({ 
 test("empty verified store stays explicit and never substitutes sample payments", async ({ page }) => {
   await mockApplication(page);
   await page.route("**/api/transactions?since=*", (route) => route.fulfill({ json: { transactions: [], cursor: 0, serverTime: new Date().toISOString(), source: "persisted verified PayPal events" } }));
-  await page.goto("/");
+  await page.goto("/legacy");
   await expect(page.getByText("No verified rows is a truthful empty state—not a demo failure. Mixed currencies are never summed; fixtures never enter this database.")).toBeVisible();
   await expect(page.getByText("TEST-POI-1")).toHaveCount(0);
 });

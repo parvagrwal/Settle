@@ -5,7 +5,7 @@ import { gridRowIds } from '../support/fixtures.ts';
 for (const size of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tablet', width: 768, height: 1024 }, { name: 'mobile', width: 390, height: 844 }]) {
   test(`legacy plain grid fallback: ${size.name}`, async ({ page }) => {
     await page.setViewportSize(size);
-    await page.goto('/');
+    await page.goto('/legacy');
     await page.getByRole('navigation', { name: 'Product views' }).getByRole('button', { name: 'Legacy payout workflow' }).click();
     const dashboard = page.getByLabel('Payouts dashboard');
     await expect(dashboard.getByText('settle-audit-1').first()).toBeVisible({ timeout: 20_000 });

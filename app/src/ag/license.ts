@@ -15,20 +15,13 @@
 //   raises the required Studio licence to "Pro with AI".
 import { LicenseManager } from "ag-grid-enterprise";
 import { AgStudioLicenseManager } from "ag-studio";
+import { JUDGING_ENDS, readLicenceKeys, type LicenceKeys } from "./licenceConfig.ts";
 
-/** Winners are announced around this date; nothing may be changed after the submission deadline. */
-export const JUDGING_ENDS = new Date("2026-12-21T23:59:59Z");
-
-export interface LicenceKeys { grid: string | null; studio: string | null }
-
-export function readLicenceKeys(env: Record<string, unknown>): LicenceKeys {
-  const clean = (value: unknown): string | null => {
-    if (typeof value !== "string") return null;
-    const trimmed = value.trim().replace(/^["']|["']$/g, "").trim();
-    return trimmed === "" ? null : trimmed;
-  };
-  return { grid: clean(env.VITE_AG_GRID_LICENSE_KEY), studio: clean(env.VITE_AG_STUDIO_LICENSE_KEY) };
-}
+// The configuration half of this module needs no rendering library, so it lives
+// in `licenceConfig.ts` and is re-exported here for one import path.
+export { JUDGING_ENDS, readLicenceKeys, type LicenceKeys } from "./licenceConfig.ts";
+void JUDGING_ENDS;
+void readLicenceKeys;
 
 /** The subset of the vendor's `getLicenseDetails` result this module reads. */
 export interface VendorLicenceDetails {

@@ -12,7 +12,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { agProblems, gridRowIds, horizontalOverflow, licenceNotices, mockApi, recordConsole, transaction, transactions, type TransactionFixture } from "./support/fixtures.ts";
 
 async function openProviderEvents(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByRole("button", { name: "Verified transactions" }).click();
   await expect(page.getByText("Every status has a receipt.")).toBeVisible();
 }
@@ -228,7 +228,7 @@ for (const view of ["Verified transactions", "Legacy payout workflow", "Allocati
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const page = await context.newPage();
     await mockApi(page, transactions(6));
-    await page.goto("/");
+    await page.goto("/legacy");
     await page.getByRole("button", { name: view }).click();
     await page.waitForTimeout(2500);
     const before = await horizontalOverflow(page);

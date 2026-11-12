@@ -22,7 +22,7 @@ for (const size of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tabl
         await route.fulfill({ json: unavailable });
       }
     });
-    await page.goto('/');
+    await page.goto('/legacy');
     await page.getByRole('navigation', { name: 'Product views' }).getByRole('button', { name: 'Allocation agent' }).click();
     await expect(page.getByText(context.source)).toBeVisible();
     await page.getByRole('button', { name: 'Evaluate current scenario' }).click();

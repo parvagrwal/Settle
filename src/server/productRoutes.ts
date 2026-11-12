@@ -4,7 +4,8 @@ import { ProductPermissionError, ProductStore, type ProductUser, type Verificati
 import { extractPayoutItemFeeCents, type FinancialStore } from "./financialStore.ts";
 import { verifyOwnerToken } from "./ownerAuth.ts";
 import { deriveVerificationState } from "./verificationState.ts";
-import { publicBatchStatus, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { confirmDuePayments, publicBatchStatus, reconcilePayPal, submitApprovedPayment } from "./financialPayments.ts";
+import { DEFAULT_CONFIRMATION_POLICY } from "./paymentState.ts";
 import type { FetchFn } from "./paypalClient.ts";
 import { refuseIfLimited, type RateLimiter } from "./rateLimit.ts";
 import { securityHeaders } from "./httpSecurity.ts";
@@ -243,6 +244,20 @@ export async function handleProductRoute(req: IncomingMessage, res: ServerRespon
       const idempotentReplay = input.idempotentReplay === true;
       const result = await reconcilePayPal({ store: ctx.financialStore, baseUrl: ctx.baseUrl!, token: ctx.token!, refreshToken: ctx.refreshToken, fetchFn: ctx.fetchFn, idempotentReplay });
       send(res, 200, { result, workspace: productSnapshot(store, ctx.financialStore, workspaceId, user, true) }); return true;
+    }
+    if (req.method === "POST" && rest === "/confirm") {
+      // The confirmation sweep is the same server function the legacy route
+      // calls, with the same policy. Only the authorisation differs: this one
+      // accepts the server-verified product session of the workspace owner.
+      if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }
+      if (store.getWorkspace(workspaceId, user.userId).kind !== "operational") { send(res, 409, { error: "demonstration workspaces cannot start a provider confirmation sweep" }); return true; }
+      if (!providerConfigured) { send(res, 503, { error: "PayPal Sandbox confirmation is not configured" }); return true; }
+      const sweep = await confirmDuePayments({
+        store: ctx.financialStore, baseUrl: ctx.baseUrl!, token: ctx.token!, refreshToken: ctx.refreshToken,
+        policy: DEFAULT_CONFIRMATION_POLICY,
+      });
+      send(res, 200, { sweep, workspace: productSnapshot(store, ctx.financialStore, workspaceId, user, true) });
+      return true;
     }
     if (req.method === "POST" && rest === "/control") {
       if (!user) { send(res, 401, { error: "owner sign-in is required" }); return true; }

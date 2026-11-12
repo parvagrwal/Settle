@@ -4,7 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 for (const size of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tablet', width: 768, height: 1024 }, { name: 'mobile', width: 390, height: 844 }]) {
   test(`authenticated fixture workspace: ${size.name}`, async ({ page }) => {
     await page.setViewportSize(size);
-    await page.goto('/');
+    await page.goto('/legacy');
     await page.getByRole('navigation', { name: 'Product views' }).getByRole('button', { name: 'Operational workspace' }).click();
     const main = page.locator('main.workspace-page');
     await expect(main.getByRole('heading', { name: 'Owner sign-in' })).toBeVisible();

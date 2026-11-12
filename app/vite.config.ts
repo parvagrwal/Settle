@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   // In dev, the API lives on the dashboard server, port 3000.
   server: {
+    // The sandbox preview reaches the dev server through a generated host
+    // name, so any host is accepted in development. The server, not Vite,
+    // enforces the security boundary.
+    allowedHosts: true,
     proxy: {
       '/api': 'http://localhost:3000',
     },
