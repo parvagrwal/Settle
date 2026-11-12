@@ -184,7 +184,7 @@ export function Landing() {
       <p className="public-foot-links">
         <button type="button" className="link-button" onClick={() => navigate("/signin")}>Owner sign-in</button>
         <button type="button" className="link-button" onClick={() => navigate("/overview")}>Demonstration workspace</button>
-        <button type="button" className="link-button" onClick={() => navigate("/legacy")}>Reference tools</button>
+        <button type="button" className="link-button" onClick={() => navigate("/legacy")}>Operations grid and analytics (AG Grid, AG Studio)</button>
       </p>
     </footer>
   </div>;

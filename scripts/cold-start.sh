@@ -50,6 +50,7 @@ cd ..
 
 echo ""
 echo "Starting the server. Open http://localhost:${PORT:-3000}/ in a browser."
-echo "What to check: the dashboard loads, it shows 8 rows (4 paid, 2 waiting,"
-echo "1 over the cap, 1 waiting for approval). Paying stays off until .env has keys."
+echo "What to check: the landing page loads; the 8-row demonstration grid"
+echo "(4 paid, 2 waiting, 1 over the cap, 1 waiting for approval) is at /legacy."
+echo "Paying stays off until .env has keys."
 exec npm start

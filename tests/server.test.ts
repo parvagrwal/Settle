@@ -50,6 +50,31 @@ test("caps endpoint returns the locked caps and the worst-case line", async () =
   }
 });
 
+test("health endpoint answers without auth and never serves the app shell", async () => {
+  const unconfigured = createSettleServer({ jobs: [], allowlistedEmails: new Set<string>() });
+  const unconfiguredPort = await unconfigured.listen(0);
+  try {
+    const res = await fetch(`http://127.0.0.1:${unconfiguredPort}/health`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as Record<string, unknown>;
+    assert.equal(body.status, "ok");
+    assert.equal(body.paypalConfigured, false);
+  } finally {
+    await unconfigured.close();
+  }
+  const configured = createSettleServer({ jobs: [], allowlistedEmails: new Set<string>(), baseUrl: "https://api-m.sandbox.paypal.com", token: "test-token" });
+  const configuredPort = await configured.listen(0);
+  try {
+    const res = await fetch(`http://127.0.0.1:${configuredPort}/health`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as Record<string, unknown>;
+    assert.equal(body.status, "ok");
+    assert.equal(body.paypalConfigured, true);
+  } finally {
+    await configured.close();
+  }
+});
+
 test("static serving: home page, asset, missing asset 404, screen falls back to home", async () => {
   const dir = mkdtempSync(join(tmpdir(), "settle-static-"));
   writeFileSync(join(dir, "index.html"), "<html><body>dashboard home</body></html>");

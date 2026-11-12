@@ -1,13 +1,21 @@
 # Settle — payment truth for a small studio's payouts
 
-Settle pays approved work with the PayPal Payouts REST API inside a cap the owner
-sets. It is a sandbox-only system: test money, a US sandbox sender, no real money.
+Settle is an agent that pays freelancers on time, inside a cap the studio owner sets. It reads approved work, decides who gets paid how much, and pays them with PayPal, in sandbox only: test money, a US sandbox sender, no real money. Built for the PayPal AI Hackathon.
 
-This README describes **what the code does now**, how to check each claim, and
-what is still unproven. Every number quoted below was produced by a command that
-is printed next to it.
+[How to run it](#2-run-it) — one command, no account needed to look at the dashboard.
 
-- `npm test` → **332 tests, 332 pass, 0 fail**
+![Jobs and decisions screen: obligations with approval and payment states, and the rule-based proposal panel](docs/images/jobs-decisions.png)
+
+| What it does | How |
+| --- | --- |
+| PayPal | Pays approved work with the Payouts REST API, bills the client with an Invoicing API invoice for the same work, and verifies payments against PayPal Reporting through the Agent Toolkit's `list_transactions` read. |
+| AI | A Groq model proposes which approved jobs fit the run budget and in what order; the rules in `decide()` and the ledger enforce the caps, so a model reply cannot raise them. |
+| AG Grid | AG Grid powers the operations grid and AG Studio analytics, reading the ledger and PayPal sandbox data with a receipt next to every payment. |
+| Verify | 333 server tests, 123 dashboard tests and 80 browser tests, all passing; every sandbox receipt below names the file that records it. |
+
+- `npm test` → **333 tests, 333 pass, 0 fail**
+- `npm --prefix app test` → **123 tests, 123 pass, 0 fail**
+- `npx playwright test` → **80 tests, 80 pass, 0 fail**
 - `npm --prefix app run build` → production bundle builds
 - One checked-in PayPal artifact: `evidence/payouts-first-test/` (batch
   `YFBPVYJBHM9GU`, 2026-11-06, two items, `payout_item_fee` 0.02 + 0.02 = 0.04)
@@ -96,9 +104,7 @@ PayPal is optional at startup. Without credentials in `.env` the dashboard still
 loads, says "PayPal Sandbox is not connected in this process", and refuses every
 submission. `SETTLE_OWNER_TOKEN` guards every money-moving route.
 
-Views: **Operational workspace** (the only screen that can pay),
-**Legacy payout workflow** (demonstration grid, read-only for seeded rows),
-**Verified transactions**, **Allocation agent**.
+Screens: **Overview**, **Jobs & decisions**, **Payments & receipts**, **Controls & audit**. Jobs can pay from the product screens once an obligation is approved. The older screens — **Operational workspace**, **Legacy payout workflow** (demonstration grid, read-only for seeded rows), **Verified transactions**, **Allocation agent** — live under **/legacy** (Operations grid and analytics).
 
 ## 3. Verify the claims without trusting this README
 
@@ -111,7 +117,7 @@ curl -s -X POST localhost:3000/api/approve -H "x-settle-owner-token: $SETTLE_OWN
 # -> 409 {"code":"DEMO_RECORD_NOT_PAYABLE", ...}
 
 # 2. Every figure names its origin, window, source and verification.
-curl -s localhost:3000/api/financial/report | python3 -m json.tool | head -40
+curl -s localhost:3000/api/financial/report -H "x-settle-owner-token: $SETTLE_OWNER_TOKEN" | python3 -m json.tool | head -40
 
 # 3. The grid says what each row is.
 curl -s localhost:3000/api/grid | python3 -c \
@@ -120,6 +126,8 @@ curl -s localhost:3000/api/grid | python3 -c \
 # 4. Durable confirmation work is visible and never lost on restart.
 curl -s -X POST localhost:3000/api/financial/confirm -H "x-settle-owner-token: $SETTLE_OWNER_TOKEN"
 # -> {"checked":n,"confirmed":n,"stillPending":n,"errors":n}
+# Without PayPal credentials in .env the same call returns 503
+# {"error":"confirmation is not configured: sandbox credentials are missing"}.
 
 # 5. The emergency stop is stored, audited and enforced.
 curl -s -X POST localhost:3000/api/financial/control -H "x-settle-owner-token: $SETTLE_OWNER_TOKEN" \
@@ -137,7 +145,7 @@ The tests that pin these behaviours:
 | Accepted-not-settled, retry, replay, refusal, stop | `tests/asyncConfirmation.test.ts` | 9 |
 | Seed refusal, report semantics, execution runs, partial runs, stop, unknown fee | `tests/financialReport.test.ts` | 8 |
 | Workspace run, reject, stop durability, failed item | `tests/productExecution.test.ts` | 6 |
-| Existing behaviour, restated against the new contracts | `tests/financialPayments.test.ts`, `tests/financialHttpAdversarial.test.ts`, `tests/pay-invoice.test.ts`, `tests/productApi.test.ts`, `tests/server.test.ts`, `tests/paypalShapeFixes.test.ts` | rest of 332 |
+| Existing behaviour, restated against the new contracts | `tests/financialPayments.test.ts`, `tests/financialHttpAdversarial.test.ts`, `tests/pay-invoice.test.ts`, `tests/productApi.test.ts`, `tests/server.test.ts`, `tests/paypalShapeFixes.test.ts` | rest of 333 server tests |
 
 ## 4. The payment state machine
 
@@ -217,11 +225,14 @@ Full policy, citations and the observation that does **not** generalise:
 `record_origin` is set on insert and enforced by
 `payments_origin_insert`; a second trigger `payments_no_demo_submit` refuses a
 provider attempt for a non-application payment. The four seeded rows that claim a
-2026-11-07 batch are shown as `historical_reference`. They are verified by the
-checked-in run outputs that record those exact batches and jobs as SUCCESS
-(evidence/audit/run-output.json for RBZ4V8LCSSK5W, evidence/audit/run-output-groq.json
-for JHG24Y874LK58); the only raw PayPal payout response checked in is
-evidence/payouts-first-test/payout-poll.json. See the receipts table above.
+2026-11-07 batch are shown as `historical_reference`. The batches they name are
+recorded in checked-in run outputs (evidence/audit/run-output.json for
+RBZ4V8LCSSK5W, evidence/audit/run-output-groq.json for JHG24Y874LK58), but the
+seeded rows themselves are not verified by any artifact in this repository, and
+the grid says so: each row carries the label "the claimed batch id is not
+verified by any artifact in this repository". The only raw PayPal payout
+response checked in is evidence/payouts-first-test/payout-poll.json. See the
+receipts table above.
 
 ## 8. Workspace
 
@@ -242,10 +253,7 @@ provider's refusal, and the server says so.
 ## 9. Honest limitations
 
 - **Sandbox only.** No production credentials, no production verification.
-- **The AI claim is unproven.** In the recorded 2026-11-09 comparison all three
-  systems tied at **$130**. That result is reported as a tie. There is no
-  benchmark evidence that the model is better than the rule-based or manual path,
-  and this README does not claim otherwise.
+- **What the model does, precisely.** The model runs live: in the recorded Groq run it proposed a payment that was paid in the sandbox as batch JHG24Y874LK58, and an invented $999 proposal was rejected by the cap rule (`evidence/audit/run-output-groq.txt`). What is unproven is that the model allocates better than the rules: in the one recorded comparison, all three systems tied at $130 (`evidence/allocation/comparison.json`). There is no benchmark evidence that the model is better than the rule-based path, and this README does not claim otherwise. The proposal panel on the product screens is rule-based, not a model call; the model-backed allocation screen is the Allocation agent view under Operations grid and analytics.
 - **The Toolkit is used for one read path, not for payouts.** The verifier's
   Reporting read runs through the Toolkit's `list_transactions` tool. There is
   still no Payouts tool in `paypal/agent-toolkit`, so payouts, invoices, and
@@ -283,8 +291,9 @@ the receipt endpoint.
 | `src/server/fees.ts`, `money.ts` | fee policy and integer money arithmetic |
 | `src/server/routes.ts` | HTTP API, legacy demonstration grid, financial endpoints |
 | `src/server/productRoutes.ts` | operational workspace API |
-| `app/src/WorkspaceApp.tsx` | the operational screen |
-| `app/src/App.tsx` | demonstration dashboard, report view, result screen |
+| `app/src/product/` | the product screens: Overview, Jobs & decisions, Payments & receipts, Controls & audit |
+| `app/src/App.tsx` | the older screens under /legacy: operational workspace, demonstration grid, verified transactions, allocation agent |
+| `app/src/WorkspaceApp.tsx` | the older operational screen, under /legacy |
 | `docs/IMPLEMENTATION-LEDGER.md` | per-change record: cause, decision, test, result, risk |
 | `docs/HARDENING-2026-11.md` | 2026-11 hardening pass: baseline findings, fixes, acceptance experiments |
 | `docs/FINANCIAL-INVARIANTS.md` | the ten financial invariants, provider-state exposure policy, audit event semantics |

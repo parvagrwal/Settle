@@ -1,10 +1,13 @@
-// The agent's recommendation panel.
+// The rule-based proposal panel.
 //
 // This is the screen that has to make one distinction unmistakable:
 //
-//   The agent recommends. The owner authorises. The financial engine enforces.
+//   The proposal ranks. The owner authorises. The financial engine enforces.
 //
-// The recommendation is therefore presented as a proposal: an amount, a
+// The proposal is deterministic: approved work ranked by priority and due
+// date, filled against the caps. It is not a model call. The model-backed
+// allocation screen is the Allocation agent view under Operations grid and
+// analytics. The proposal is therefore presented as a proposal: an amount, a
 // breakdown, the reasoning, and the limits of that reasoning. It never uses the
 // language of authorisation, it never shows a payment state, and it always
 // carries the boundary note.
@@ -69,11 +72,15 @@ export function RecommendationPanel({ snapshot, operations, onGenerate, busy }: 
 
   return <Card className="recommendation-card">
     <CardHeader
-      eyebrow="Agent allocation recommendation"
+      eyebrow="Rule-based proposal"
       title={decision === null ? "No recommendation yet" : "Proposed allocation"}
-      description="The agent ranks owner-approved work inside the policy and returns a proposal. It cannot approve, reserve or send anything."
+      description="A rule ranks owner-approved work by priority and due date and fills the caps. It is not a model call, and it cannot approve, reserve or send anything."
       actions={decision === null ? undefined : <Pill tone="info" title={`Decision ${decision.decisionId}`}>{decision.status === "recommendation_ready" ? "Recommendation ready" : decision.status}</Pill>}
     />
+    <p className="panel-note">
+      The model-backed allocation screen is the Allocation agent view under{" "}
+      <button type="button" className="link-button" onClick={() => navigate("/legacy")}>Operations grid and analytics</button>.
+    </p>
 
     {task.error !== null && <Alert tone="danger" title="The recommendation could not be produced">{task.error}</Alert>}
 

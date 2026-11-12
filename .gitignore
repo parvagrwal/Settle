@@ -14,6 +14,10 @@ data/*.db-wal
 # Browser-test output.
 test-results/
 playwright-report/
+# Browser-test screenshots, written by the e2e suite on every run.
+evidence/browser/
+evidence/design-system/
+evidence/product/
 # Logs and OS files.
 *.log
 .DS_Store

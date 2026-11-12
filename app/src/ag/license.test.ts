@@ -42,7 +42,7 @@ describe("licence configuration", () => {
     expect(after.coversJudging).toBe(true);
     const expired = describeLicence({ product: "AG Grid Enterprise", key: "k", details: { valid: true, isTrial: true, expiry: "1 November 2026", currentLicenseType: "GRID", suppliedLicenseType: "GRID" }, now });
     expect(expired.state).toBe("expired");
-    expect(JUDGING_ENDS.toISOString().slice(0, 10)).toBe("2026-12-21");
+    expect(JUDGING_ENDS.toISOString().slice(0, 10)).toBe("2026-12-15");
   });
 
   it("treats a perpetual key as covering judging unless the version is newer than the key allows", () => {

@@ -1179,6 +1179,14 @@ export function createSettleServer(opts: {
         return;
       }
 
+      // Health check, answered before the static fallback so it never
+      // returns the app shell. No auth: it reports only whether the
+      // process is up and whether sandbox credentials are configured.
+      if (req.method === "GET" && path === "/health") {
+        sendJson(res, 200, { status: "ok", paypalConfigured: opts.baseUrl !== undefined && opts.token !== undefined });
+        return;
+      }
+
       if (req.method === "GET" && opts.staticDir !== undefined) {
         if (serveStaticFile(res, opts.staticDir, path)) return;
       }

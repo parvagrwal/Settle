@@ -235,7 +235,7 @@ export function Jobs() {
       </Card>
     </section>
 
-    <aside className="jobs-side" aria-label="Agent recommendation">
+    <aside className="jobs-side" aria-label="Rule-based proposal">
       <RecommendationPanel snapshot={snapshot} operations={operations} busy={task.busy !== null} onGenerate={generateRecommendation} />
     </aside>
 

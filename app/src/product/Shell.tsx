@@ -76,14 +76,14 @@ export function Shell({ title, subtitle, actions, children }: { title: string; s
           <Pill tone="warning">PayPal Sandbox</Pill>
         </p>
         <p className="sidebar-foot-note">Test money only. No real money moves.</p>
-        <button type="button" className="sidebar-link" onClick={() => go("/legacy")}>Reference tools</button>
+        <button type="button" className="sidebar-link" onClick={() => go("/legacy")}>Operations grid and analytics (AG Grid, AG Studio)</button>
       </div>
     </aside>
 
     <div className="shell-main">
       <header className="workspace-bar">
         <button type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="mobile-nav" onClick={() => setMenuOpen((open) => !open)}>
-          <span aria-hidden="true">☰</span>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="5" x2="17" y2="5" /><line x1="3" y1="10" x2="17" y2="10" /><line x1="3" y1="15" x2="17" y2="15" /></svg>
           <span className="visually-hidden">{menuOpen ? "Close navigation" : "Open navigation"}</span>
         </button>
         <div className="workspace-identity">
@@ -114,7 +114,7 @@ export function Shell({ title, subtitle, actions, children }: { title: string; s
           <nav aria-label="Workspace navigation">
             <NavList current={path} onNavigate={go} />
           </nav>
-          <button type="button" className="sidebar-link" onClick={() => go("/legacy")}>Reference tools</button>
+          <button type="button" className="sidebar-link" onClick={() => go("/legacy")}>Operations grid and analytics (AG Grid, AG Studio)</button>
         </div>
       )}
 

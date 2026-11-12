@@ -9,8 +9,8 @@
 // - They are never invented, logged or rendered.
 export interface LicenceKeys { grid: string | null; studio: string | null }
 
-/** Winners are announced around this date; no change may be made after the submission deadline. */
-export const JUDGING_ENDS = new Date("2026-12-21T23:59:59Z");
+/** Judging ends on this date; winners are announced around 21 December. No change may be made after the submission deadline. */
+export const JUDGING_ENDS = new Date("2026-12-15T23:59:59Z");
 
 export function readLicenceKeys(env: Record<string, unknown>): LicenceKeys {
   const clean = (value: unknown): string | null => {
