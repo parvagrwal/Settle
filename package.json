@@ -23,5 +23,11 @@
   },
   "dependencies": {
     "@paypal/agent-toolkit": "1.11.0"
+  },
+  "overrides": {
+    "@langchain/core": "0.3.37",
+    "jsondiffpatch": "0.7.6",
+    "mathjs": "15.2.0",
+    "zod": "4.6.6"
   }
 }
